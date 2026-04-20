@@ -6,6 +6,7 @@ import { appState, BusType, ConnectionState } from '../core/AppState.js';
 import { FrameParser } from '../core/FrameParser.js';
 import { SerialDriver } from './SerialDriver.js';
 import { WebSocketDriver } from './WebSocketDriver.js';
+import { MqttDriver } from './MqttDriver.js';
 
 export class ConnectionManager {
   constructor() {
@@ -28,6 +29,8 @@ export class ConnectionManager {
         this._driver = new SerialDriver();
       } else if (bus === BusType.WebSocket) {
         this._driver = new WebSocketDriver();
+      } else if (bus === BusType.MQTT) {
+        this._driver = new MqttDriver();
       } else {
         // Fallback to simulated driver for demo
         this._driver = null;
