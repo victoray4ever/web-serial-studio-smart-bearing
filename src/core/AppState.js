@@ -24,6 +24,26 @@ export const ConnectionState = {
   Error: 'Error'
 };
 
+function createDefaultMqttConfig() {
+  return {
+    version: '3.1.1',
+    mode: 'PubSub',
+    keepalive: 60,
+    host: 'broker.emqx.io',
+    port: 8084,
+    path: '/mqtt',
+    topic: 'sensor/data',
+    retain: false,
+    clean: true,
+    username: '',
+    password: '',
+    qos: 0,
+    clientId: 'web-serial-studio-' + Math.random().toString(36).substr(2, 8),
+    useSSL: true,
+    brokerUrl: 'wss://broker.emqx.io:8084/mqtt'
+  };
+}
+
 class AppState {
   constructor() {
     this._operationMode = OperationMode.QuickPlot;
@@ -55,14 +75,7 @@ class AppState {
     };
 
     // MQTT config
-    this._mqttConfig = {
-      brokerUrl: 'wss://broker.emqx.io:8084/mqtt',
-      topic: 'sensor/data',
-      username: '',
-      password: '',
-      qos: 0,
-      clientId: 'web-serial-studio-' + Math.random().toString(36).substr(2, 8)
-    };
+    this._mqttConfig = createDefaultMqttConfig();
 
     // Frame config
     this._frameConfig = {
@@ -191,7 +204,7 @@ class AppState {
       if (s.points) this._points = s.points;
       if (s.serialConfig) Object.assign(this._serialConfig, s.serialConfig);
       if (s.wsConfig) Object.assign(this._wsConfig, s.wsConfig);
-      if (s.mqttConfig) Object.assign(this._mqttConfig, s.mqttConfig);
+      if (s.mqttConfig) Object.assign(this._mqttConfig, createDefaultMqttConfig(), s.mqttConfig);
       if (s.frameConfig) Object.assign(this._frameConfig, s.frameConfig);
     } catch (e) { /* ignore */ }
   }

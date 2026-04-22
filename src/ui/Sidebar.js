@@ -251,6 +251,132 @@ export class Sidebar {
     });
   }
 
+  _buildMqttConfigPanel(cfg) {
+    const path = cfg.path || '/mqtt';
+    const host = cfg.host || '';
+    const port = Number(cfg.port) || (cfg.useSSL ? 8084 : 8083);
+    const preview = host ? `${cfg.useSSL ? 'wss' : 'ws'}://${host}:${port}${path.startsWith('/') ? path : `/${path}`}` : 'Waiting for host...';
+    return `
+      <div class="mqtt-config-grid">
+        <div class="form-row">
+          <div class="form-label">MQTT Version</div>
+          <select class="form-select" id="drv-mqtt-version">
+            ${['3.1', '3.1.1', '5.0'].map(v => `<option ${cfg.version === v ? 'selected' : ''} value="${v}">MQTT ${v}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-row">
+          <div class="form-label">Mode</div>
+          <select class="form-select" id="drv-mqtt-mode">
+            ${[
+              ['PubSub', 'Publish + Subscribe'],
+              ['SubscribeOnly', 'Subscribe Only'],
+              ['PublishOnly', 'Publish Only']
+            ].map(([value, label]) => `<option ${cfg.mode === value ? 'selected' : ''} value="${value}">${label}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-row">
+          <div class="form-label">QoS Level</div>
+          <select class="form-select" id="drv-mqtt-qos">
+            ${[
+              [0, '0 - At most once'],
+              [1, '1 - At least once'],
+              [2, '2 - Exactly once']
+            ].map(([value, label]) => `<option ${Number(cfg.qos) === value ? 'selected' : ''} value="${value}">${label}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-row">
+          <div class="form-label">Keep Alive (s)</div>
+          <input class="form-input" id="drv-mqtt-keepalive" type="number" min="5" max="3600" value="${cfg.keepalive ?? 60}">
+        </div>
+        <div class="form-row">
+          <div class="form-label">Host</div>
+          <input class="form-input" id="drv-mqtt-host" value="${host}" placeholder="broker.example.com">
+        </div>
+        <div class="form-row">
+          <div class="form-label">Port</div>
+          <input class="form-input" id="drv-mqtt-port" type="number" min="1" max="65535" value="${port}">
+        </div>
+        <div class="form-row">
+          <div class="form-label">Topic</div>
+          <input class="form-input" id="drv-mqtt-topic" value="${cfg.topic || ''}" placeholder="sensor/data">
+        </div>
+        <div class="form-row">
+          <div class="form-label">WebSocket Path</div>
+          <input class="form-input" id="drv-mqtt-path" value="${path}" placeholder="/mqtt">
+        </div>
+        <div class="form-row">
+          <div class="form-label">Username</div>
+          <input class="form-input" id="drv-mqtt-user" value="${cfg.username || ''}" placeholder="Optional">
+        </div>
+        <div class="form-row">
+          <div class="form-label">Password</div>
+          <input class="form-input" id="drv-mqtt-pass" type="password" value="${cfg.password || ''}" placeholder="Optional">
+        </div>
+        <div class="form-row">
+          <div class="form-label">Client ID</div>
+          <input class="form-input mono" id="drv-mqtt-clientid" value="${cfg.clientId || ''}" placeholder="web-serial-studio-client">
+        </div>
+        <div class="form-row mqtt-toggles">
+          <label class="checkbox-wrap">
+            <input type="checkbox" id="drv-mqtt-ssl" ${cfg.useSSL ? 'checked' : ''}>
+            <span>Enable SSL / TLS</span>
+          </label>
+          <label class="checkbox-wrap">
+            <input type="checkbox" id="drv-mqtt-clean" ${cfg.clean !== false ? 'checked' : ''}>
+            <span>Clean Session</span>
+          </label>
+          <label class="checkbox-wrap">
+            <input type="checkbox" id="drv-mqtt-retain" ${cfg.retain ? 'checked' : ''}>
+            <span>Retain Publish</span>
+          </label>
+        </div>
+      </div>
+      <div class="mqtt-helper-card">
+        <div class="mqtt-helper-title">Browser WebSocket Endpoint</div>
+        <div class="mqtt-helper-url mono">${preview}</div>
+        <div class="mqtt-helper-note">
+          Browser MQTT must connect through a WebSocket listener. A raw TCP MQTT port like 1883 will fail unless your broker exposes MQTT over WS/WSS on that port.
+        </div>
+      </div>`;
+  }
+
+  _bindMqttConfigPanel(panel) {
+    const update = () => {
+      const next = {
+        version: panel.querySelector('#drv-mqtt-version')?.value || '3.1.1',
+        mode: panel.querySelector('#drv-mqtt-mode')?.value || 'PubSub',
+        qos: parseInt(panel.querySelector('#drv-mqtt-qos')?.value, 10) || 0,
+        keepalive: Math.max(5, parseInt(panel.querySelector('#drv-mqtt-keepalive')?.value, 10) || 60),
+        host: panel.querySelector('#drv-mqtt-host')?.value?.trim() || '',
+        port: Math.max(1, parseInt(panel.querySelector('#drv-mqtt-port')?.value, 10) || 0),
+        topic: panel.querySelector('#drv-mqtt-topic')?.value?.trim() || '',
+        path: panel.querySelector('#drv-mqtt-path')?.value?.trim() || '/mqtt',
+        username: panel.querySelector('#drv-mqtt-user')?.value || '',
+        password: panel.querySelector('#drv-mqtt-pass')?.value || '',
+        clientId: panel.querySelector('#drv-mqtt-clientid')?.value?.trim() || '',
+        useSSL: !!panel.querySelector('#drv-mqtt-ssl')?.checked,
+        clean: !!panel.querySelector('#drv-mqtt-clean')?.checked,
+        retain: !!panel.querySelector('#drv-mqtt-retain')?.checked
+      };
+
+      const effectivePort = next.port || (next.useSSL ? 8084 : 8083);
+      const effectivePath = next.path.startsWith('/') ? next.path : `/${next.path}`;
+      next.port = effectivePort;
+      next.path = effectivePath;
+      next.brokerUrl = next.host ? `${next.useSSL ? 'wss' : 'ws'}://${next.host}:${effectivePort}${effectivePath}` : '';
+      appState.updateMqttConfig(next);
+
+      const preview = panel.querySelector('.mqtt-helper-url');
+      if (preview) preview.textContent = next.brokerUrl || 'Waiting for host...';
+    };
+
+    panel.querySelectorAll('#drv-mqtt-version, #drv-mqtt-mode, #drv-mqtt-qos, #drv-mqtt-keepalive, #drv-mqtt-host, #drv-mqtt-port, #drv-mqtt-topic, #drv-mqtt-path, #drv-mqtt-user, #drv-mqtt-pass, #drv-mqtt-clientid, #drv-mqtt-ssl, #drv-mqtt-clean, #drv-mqtt-retain')
+      .forEach((el) => {
+        const eventName = el.type === 'checkbox' || el.tagName === 'SELECT' ? 'change' : 'input';
+        el.addEventListener(eventName, update);
+      });
+  }
+
   _updateDriverPanel() {
     const panel = this._container.querySelector('#driver-panel');
     if (!panel) return;
@@ -295,23 +421,7 @@ export class Sidebar {
         </div>`;
     } else if (bus === BusType.MQTT) {
       const cfg = appState.mqttConfig;
-      html += `
-        <div class="form-group">
-          <label>Broker URL (wss://)</label>
-          <input class="form-input" id="drv-mqtt-url" value="${cfg.brokerUrl}" placeholder="wss://broker.emqx.io:8084/mqtt">
-        </div>
-        <div class="form-row">
-          <div class="form-label">Topic</div>
-          <input class="form-input" id="drv-mqtt-topic" value="${cfg.topic}" placeholder="sensor/data">
-        </div>
-        <div class="form-row">
-          <div class="form-label">Username</div>
-          <input class="form-input" id="drv-mqtt-user" value="${cfg.username}">
-        </div>
-        <div class="form-row">
-          <div class="form-label">Password</div>
-          <input class="form-input" id="drv-mqtt-pass" type="password" value="${cfg.password}">
-        </div>`;
+      html += this._buildMqttConfigPanel(cfg);
     } else if (bus === BusType.Bluetooth) {
       html += `<div style="color:var(--text-muted);font-size:var(--font-size-xs);line-height:1.6;">
         Web Bluetooth API will prompt for device selection when you click Connect.<br>
@@ -338,10 +448,7 @@ export class Sidebar {
     } else if (bus === BusType.WebSocket) {
       panel.querySelector('#drv-ws-url')?.addEventListener('change', (e) => appState.updateWsConfig({ url: e.target.value }));
     } else if (bus === BusType.MQTT) {
-      panel.querySelector('#drv-mqtt-url')?.addEventListener('change', (e) => appState.updateMqttConfig({ brokerUrl: e.target.value }));
-      panel.querySelector('#drv-mqtt-topic')?.addEventListener('change', (e) => appState.updateMqttConfig({ topic: e.target.value }));
-      panel.querySelector('#drv-mqtt-user')?.addEventListener('change', (e) => appState.updateMqttConfig({ username: e.target.value }));
-      panel.querySelector('#drv-mqtt-pass')?.addEventListener('change', (e) => appState.updateMqttConfig({ password: e.target.value }));
+      this._bindMqttConfigPanel(panel);
     }
   }
 

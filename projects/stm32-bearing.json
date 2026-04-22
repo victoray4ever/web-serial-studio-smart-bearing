@@ -1,30 +1,211 @@
 {
-  "title": "STM32 Bearing Monitoring System",
-  "protocol": "STM32Binary",
-  "groups": [
-    {
-      "title": "High-Frequency Vibration",
-      "widget": "Plot",
-      "datasets": [
-        { "title": "Vibration Channel", "index": 0, "min": -32768, "max": 32767, "units": "Raw" }
-      ]
-    },
-    {
-      "title": "Strain Sensors (ADS124S08)",
-      "widget": "MultiPlot",
-      "datasets": [
-        { "title": "Strain 1", "index": 1, "min": -3, "max": 3, "units": "V" },
-        { "title": "Strain 2", "index": 2, "min": -3, "max": 3, "units": "V" },
-        { "title": "Strain 3", "index": 3, "min": -3, "max": 3, "units": "V" }
-      ]
-    },
-    {
-      "title": "Ambient Conditions",
-      "widget": "Gauges",
-      "datasets": [
-        { "title": "ADC Temp", "index": 4, "gauge": true, "min": -3, "max": 3, "units": "V" },
-        { "title": "TMP117 Temp", "index": 5, "gauge": true, "min": 0, "max": 100, "units": "°C" }
-      ]
-    }
-  ]
+    "actions": [
+    ],
+    "protocol": "STM32Binary",
+    "groups": [
+        {
+            "datasets": [
+                {
+                    "alarmEnabled": false,
+                    "alarmHigh": 0,
+                    "alarmLow": 0,
+                    "fft": false,
+                    "fftMax": 32767,
+                    "fftMin": -32768,
+                    "fftSamples": -1,
+                    "fftSamplingRate": -1,
+                    "graph": false,
+                    "index": 0,
+                    "led": false,
+                    "ledHigh": 0,
+                    "log": false,
+                    "overviewDisplay": false,
+                    "plotMax": 32767,
+                    "plotMin": -32768,
+                    "title": "Vibration Channel",
+                    "units": "Raw",
+                    "value": "--.--",
+                    "widget": "",
+                    "widgetMax": 32767,
+                    "widgetMin": -32768,
+                    "xAxis": -1
+                }
+            ],
+            "title": "High-Frequency Vibration",
+            "widget": "Plot"
+        },
+        {
+            "datasets": [
+                {
+                    "alarmEnabled": false,
+                    "alarmHigh": 0,
+                    "alarmLow": 0,
+                    "fft": false,
+                    "fftMax": 3,
+                    "fftMin": -3,
+                    "fftSamples": -1,
+                    "fftSamplingRate": -1,
+                    "graph": false,
+                    "index": 1,
+                    "led": false,
+                    "ledHigh": 0,
+                    "log": false,
+                    "overviewDisplay": false,
+                    "plotMax": 3,
+                    "plotMin": -3,
+                    "title": "Strain 1",
+                    "units": "V",
+                    "value": "--.--",
+                    "widget": "",
+                    "widgetMax": 3,
+                    "widgetMin": -3,
+                    "xAxis": -1
+                },
+                {
+                    "alarmEnabled": false,
+                    "alarmHigh": 0,
+                    "alarmLow": 0,
+                    "fft": false,
+                    "fftMax": 3,
+                    "fftMin": -3,
+                    "fftSamples": -1,
+                    "fftSamplingRate": -1,
+                    "graph": false,
+                    "index": 2,
+                    "led": false,
+                    "ledHigh": 0,
+                    "log": false,
+                    "overviewDisplay": false,
+                    "plotMax": 3,
+                    "plotMin": -3,
+                    "title": "Strain 2",
+                    "units": "V",
+                    "value": "--.--",
+                    "widget": "",
+                    "widgetMax": 3,
+                    "widgetMin": -3,
+                    "xAxis": -1
+                },
+                {
+                    "alarmEnabled": false,
+                    "alarmHigh": 0,
+                    "alarmLow": 0,
+                    "fft": false,
+                    "fftMax": 3,
+                    "fftMin": -3,
+                    "fftSamples": -1,
+                    "fftSamplingRate": -1,
+                    "graph": false,
+                    "index": 3,
+                    "led": false,
+                    "ledHigh": 0,
+                    "log": false,
+                    "overviewDisplay": false,
+                    "plotMax": 3,
+                    "plotMin": -3,
+                    "title": "Strain 3",
+                    "units": "V",
+                    "value": "--.--",
+                    "widget": "",
+                    "widgetMax": 3,
+                    "widgetMin": -3,
+                    "xAxis": -1
+                }
+            ],
+            "title": "Strain Sensors (ADS124S08)",
+            "widget": "MultiPlot"
+        },
+        {
+            "datasets": [
+                {
+                    "alarmEnabled": false,
+                    "alarmHigh": 0,
+                    "alarmLow": 0,
+                    "fft": false,
+                    "fftMax": 3,
+                    "fftMin": -3,
+                    "fftSamples": -1,
+                    "fftSamplingRate": -1,
+                    "graph": false,
+                    "index": 4,
+                    "led": false,
+                    "ledHigh": 0,
+                    "log": false,
+                    "overviewDisplay": false,
+                    "plotMax": 3,
+                    "plotMin": -3,
+                    "title": "ADC Temp",
+                    "units": "V",
+                    "value": "--.--",
+                    "widget": "",
+                    "widgetMax": 3,
+                    "widgetMin": -3,
+                    "xAxis": -1
+                },
+                {
+                    "alarmEnabled": false,
+                    "alarmHigh": 0,
+                    "alarmLow": 0,
+                    "fft": false,
+                    "fftMax": 100,
+                    "fftMin": 0,
+                    "fftSamples": -1,
+                    "fftSamplingRate": -1,
+                    "graph": false,
+                    "index": 5,
+                    "led": false,
+                    "ledHigh": 0,
+                    "log": false,
+                    "overviewDisplay": false,
+                    "plotMax": 100,
+                    "plotMin": 0,
+                    "title": "TMP117 Temp",
+                    "units": "°C",
+                    "value": "--.--",
+                    "widget": "",
+                    "widgetMax": 100,
+                    "widgetMin": 0,
+                    "xAxis": -1
+                }
+            ],
+            "title": "Ambient Conditions",
+            "widget": "Gauges"
+        }
+    ],
+    "hexadecimalDelimiters": false,
+    "pointCount": 1,
+    "sources": [
+        {
+            "busType": 0,
+            "checksum": "",
+            "checksumAlgorithm": "",
+            "connection": {
+                "autoReconnect": false,
+                "baudRate": 15,
+                "dataBitsIndex": 3,
+                "deviceId": {
+                    "description": "USB-Enhanced-SERIAL CH343",
+                    "pid": "55D3",
+                    "portName": "COM12",
+                    "serial": "5C36136027",
+                    "vid": "1A86"
+                },
+                "dtr": true,
+                "flowControlIndex": 0,
+                "parityIndex": 0,
+                "portIndex": 5,
+                "stopBitsIndex": 0
+            },
+            "decoder": 0,
+            "decoderMethod": 0,
+            "frameDetection": 1,
+            "frameEnd": "",
+            "frameParserCode": "/**\n * Comma-Separated Values (CSV) Parser\n *\n * Parses comma-separated data into an array of values.\n *\n * INPUT FORMAT: \"a,b,c,d,e,f\"\n * OUTPUT ARRAY: [\"a\", \"b\", \"c\", \"d\", \"e\", \"f\"]\n *\n * Note: Frame delimiters are automatically removed by Serial Studio.\n */\n\n//------------------------------------------------------------------------------\n// Frame Parser Function\n//------------------------------------------------------------------------------\n\n/**\n * Parses a CSV frame into an array of values.\n *\n * @param {string} frame - The CSV data from the data source\n * @returns {array} Array of string values\n */\nfunction parse(frame) {\n  return frame.split(',');\n}\n",
+            "frameStart": "",
+            "hexadecimalDelimiters": false,
+            "sourceId": 0,
+            "title": "设备 A"
+        }
+    ],
+    "title": "STM32 Bearing Monitoring System"
 }
