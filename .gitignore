@@ -1,0 +1,46 @@
+# IDE and user-local settings
+.DS_Store
+Thumbs.db
+*.code-workspace
+*.uvoptx
+*.uvguix*
+*.log
+*.lock
+
+# Generic build outputs
+build/
+bin/
+obj/
+out/
+Debug/
+Release/
+
+DebugConfig/
+
+# ARM/Keil outputs
+*.axf
+*.crf
+*.d
+*.dep
+*.hex
+*.htm
+*.iex
+*.lnp
+*.lst
+*.map
+*.o
+
+# EIDE / VS Code local caches
+.vscode/launch.json
+.settings/
+.eide/log/
+.eide.usr.ctx.json
+
+# MDK-ARM generated content
+MDK-ARM/build/
+MDK-ARM/STM32H750/
+MDK-ARM/.vscode/c_cpp_properties.json
+MDK-ARM/.vscode/*.log
+MDK-ARM/.vscode/*.lock
+MDK-ARM/.eide/env.ini
+MDK-ARM/JLinkLog.txt
