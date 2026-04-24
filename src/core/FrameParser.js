@@ -7,6 +7,8 @@ import { appState, OperationMode } from './AppState.js';
 export class FrameParser {
   constructor() {
     this._buffer = new Uint8Array(0);
+    this._mqttBinaryBuffer = new Uint8Array(0);
+    this._mqttHexBuffer = '';
     this._frameCount = 0;
     this._frameRateCounter = 0;
     this._frameRateTimer = null;
@@ -41,6 +43,14 @@ export class FrameParser {
     // Emit raw data for console (convert to string for display if needed)
     eventBus.emit('console:data', { data: newData, direction: 'rx', timestamp: Date.now() });
 
+    // MQTT preserves message boundaries. When Serial Studio publishes STM32
+    // frames over MQTT it emits the frame payload without the start/end
+    // delimiters, so we can parse exact-size messages directly and avoid
+    // misalignment caused by buffering across messages.
+    if (this._tryParseDirectSTM32MqttMessage(newData)) {
+      return;
+    }
+
     // Append to buffer
     const combined = new Uint8Array(this._buffer.length + newData.length);
     combined.set(this._buffer);
@@ -50,12 +60,202 @@ export class FrameParser {
     this._parse();
   }
 
+  _tryParseDirectSTM32MqttMessage(newData) {
+    const mode = appState.operationMode;
+    const stm32Mode = mode === OperationMode.STM32Binary || mode === OperationMode.ProjectFile;
+    if (!stm32Mode || appState.busType !== 'MQTT') return false;
+
+    const payloadSize = this._stm32PayloadSize();
+    if (newData.length >= payloadSize && newData.length % payloadSize === 0) {
+      for (let offset = 0; offset < newData.length; offset += payloadSize) {
+        const payload = newData.slice(offset, offset + payloadSize);
+        this._emitSTM32BearingFrame(payload, true, payload.length);
+      }
+      return true;
+    }
+
+    if (newData.length >= 4 && newData[0] === 0x5A && newData[1] === 0xA5) {
+      const last = newData.length - 2;
+      if (newData[last] === 0xDD && newData[last + 1] === 0xEE) {
+        this._emitSTM32BearingFrame(newData, false, newData.length);
+        return true;
+      }
+    }
+
+    const text = new TextDecoder().decode(newData);
+    if (this._looksLikeHexAscii(text)) {
+      this._mqttHexBuffer += text.replace(/[^0-9a-fA-F]/g, '');
+      this._drainMqttHexToBinary();
+      this._drainMqttBinaryFrames();
+      return true;
+    }
+
+    this._appendMqttBinary(newData);
+    this._drainMqttBinaryFrames();
+    return true;
+  }
+
+  _looksLikeHexAscii(text) {
+    if (!text) return false;
+    return /^[\s0-9a-fA-F]+$/.test(text);
+  }
+
+  _drainMqttHexToBinary() {
+    const evenLen = this._mqttHexBuffer.length - (this._mqttHexBuffer.length % 2);
+    if (evenLen <= 0) return;
+
+    const bytes = this._hexToBytes(this._mqttHexBuffer.slice(0, evenLen));
+    if (bytes) {
+      this._appendMqttBinary(bytes);
+      this._mqttHexBuffer = this._mqttHexBuffer.slice(evenLen);
+    }
+  }
+
+  _appendMqttBinary(bytes) {
+    const combined = new Uint8Array(this._mqttBinaryBuffer.length + bytes.length);
+    combined.set(this._mqttBinaryBuffer);
+    combined.set(bytes, this._mqttBinaryBuffer.length);
+    this._mqttBinaryBuffer = combined;
+  }
+
+  _drainMqttBinaryFrames() {
+    const payloadSize = this._stm32PayloadSize();
+    const minFrameSize = payloadSize + 4;
+
+    while (this._mqttBinaryBuffer.length >= payloadSize) {
+      let headerPos = -1;
+      for (let i = 0; i <= this._mqttBinaryBuffer.length - 2; i++) {
+        if (this._mqttBinaryBuffer[i] === 0x5A && this._mqttBinaryBuffer[i + 1] === 0xA5) {
+          headerPos = i;
+          break;
+        }
+      }
+
+      if (headerPos !== -1) {
+        if (headerPos > 0) {
+          this._mqttBinaryBuffer = this._mqttBinaryBuffer.slice(headerPos);
+        }
+
+        if (this._mqttBinaryBuffer.length < minFrameSize) {
+          return;
+        }
+
+        let tailPos = -1;
+        for (let i = 5700; i <= this._mqttBinaryBuffer.length - 2; i++) {
+          if (this._mqttBinaryBuffer[i] === 0xDD && this._mqttBinaryBuffer[i + 1] === 0xEE) {
+            tailPos = i;
+            break;
+          }
+        }
+
+        if (tailPos === -1) {
+          return;
+        }
+
+        const frame = this._mqttBinaryBuffer.slice(0, tailPos + 2);
+        this._emitSTM32BearingFrame(frame, false, frame.length);
+        this._mqttBinaryBuffer = this._mqttBinaryBuffer.slice(tailPos + 2);
+        continue;
+      }
+
+      const aligned = this._alignMqttPayloadStream();
+      if (!aligned) {
+        if (this._mqttBinaryBuffer.length > payloadSize * 3) {
+          this._mqttBinaryBuffer = this._mqttBinaryBuffer.slice(-(payloadSize * 2));
+        }
+        return;
+      }
+
+      if (aligned > 0) {
+        this._mqttBinaryBuffer = this._mqttBinaryBuffer.slice(aligned);
+      }
+
+      if (this._mqttBinaryBuffer.length < payloadSize) {
+        return;
+      }
+
+      const payload = this._mqttBinaryBuffer.slice(0, payloadSize);
+      this._emitSTM32BearingFrame(payload, true, payload.length);
+      this._mqttBinaryBuffer = this._mqttBinaryBuffer.slice(payloadSize);
+    }
+  }
+
+  _alignMqttPayloadStream() {
+    const payloadSize = this._stm32PayloadSize();
+    if (this._mqttBinaryBuffer.length < payloadSize) {
+      return -1;
+    }
+
+    const maxStart = Math.min(this._mqttBinaryBuffer.length - payloadSize, payloadSize - 1);
+    for (let start = 0; start <= maxStart; start++) {
+      if (this._looksLikeBearingPayloadAt(start)) {
+        return start;
+      }
+    }
+
+    return -1;
+  }
+
+  _looksLikeBearingPayloadAt(start) {
+    const buf = this._mqttBinaryBuffer;
+    const payloadSize = this._stm32PayloadSize();
+    if (start < 0 || start + payloadSize > buf.length) {
+      return false;
+    }
+
+    const zeroRunStart = start + 4754;
+    const zeroRunEnd = start + 5234;
+    if (zeroRunEnd > buf.length) {
+      return false;
+    }
+
+    let zeroCount = 0;
+    for (let i = zeroRunStart; i < zeroRunEnd; i++) {
+      if (buf[i] === 0x00) zeroCount++;
+    }
+
+    // This STM32 payload has a very long zero-filled block in the middle.
+    if (zeroCount < 430) {
+      return false;
+    }
+
+    let nonZeroBefore = 0;
+    for (let i = start + 4274; i < start + 4754; i++) {
+      if (buf[i] !== 0x00) nonZeroBefore++;
+    }
+    if (nonZeroBefore < 120) {
+      return false;
+    }
+
+    let nonZeroAfter = 0;
+    for (let i = start + 5234; i < start + 5714; i++) {
+      if (buf[i] !== 0x00) nonZeroAfter++;
+    }
+
+    return nonZeroAfter > 120;
+  }
+
+  _hexToBytes(hex) {
+    if (!hex || hex.length % 2 !== 0) return null;
+
+    const out = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < hex.length; i += 2) {
+      const byte = parseInt(hex.slice(i, i + 2), 16);
+      if (Number.isNaN(byte)) return null;
+      out[i / 2] = byte;
+    }
+
+    return out;
+  }
+
   _parse() {
     const mode = appState.operationMode;
 
     // STM32 Binary mode explicitly
     if (mode === OperationMode.STM32Binary) {
-      this._parseSTM32Binary();
+      if (this._findSTM32Header() !== -1) {
+        this._parseSTM32Binary();
+      }
       return;
     }
 
@@ -64,8 +264,9 @@ export class FrameParser {
     } else if (mode === OperationMode.QuickPlot) {
       this._parseCSV();
     } else if (mode === OperationMode.ProjectFile) {
-      // Auto-detect STM32 binary header in ProjectFile mode
-      if (this._buffer.length >= 2 && this._buffer[0] === 0x5A && this._buffer[1] === 0xA5) {
+      // MQTT payloads may begin mid-frame, so scan for the STM32 header
+      // anywhere in the buffer before falling back to CSV parsing.
+      if (this._findSTM32Header() !== -1) {
         this._parseSTM32Binary();
       } else {
         this._parseCSV();
@@ -125,61 +326,96 @@ export class FrameParser {
       const frameData = this._buffer.slice(startIdx, startIdx + FRAME_SIZE);
       this._buffer = this._buffer.slice(startIdx + FRAME_SIZE);
 
-      const view = new DataView(frameData.buffer, frameData.byteOffset, frameData.byteLength);
-
-      // 1. Extract Vibration (int16_t adcx[2132]) - Little Endian
-      const vib = [];
-      for (let i = 0; i < 2132; i++) {
-        vib.push(view.getInt16(12 + i * 2, true));
-      }
-
-      // Helper function for 24-bit Big Endian Two's Complement (ADS124S08)
-      const parse24bit = (offset) => {
-        const msb = frameData[offset];
-        const mid = frameData[offset + 1];
-        const lsb = frameData[offset + 2];
-        let val = (msb << 16) | (mid << 8) | lsb;
-        if (val & 0x800000) val -= 0x1000000;
-        return (2.5 * val) / 8388608.0; // Return voltage
-      };
-
-      // 2. Extract Strain 1, 2, 3 (each is 160 samples of 24-bit data)
-      const str1 = [];
-      const str2 = [];
-      const str3 = [];
-      for (let i = 0; i < 160; i++) {
-        str1.push(parse24bit(4276 + i * 3));
-        str2.push(parse24bit(4756 + i * 3));
-        str3.push(parse24bit(5236 + i * 3));
-      }
-
-      // 3. Extract Temp (ADS124S08Temp_Data[13])
-      const tempOffset = 5716;
-      // First 3 bytes: another ADS124S08 reading (possibly RTD/Thermistor voltage)
-      const temp1 = parse24bit(tempOffset);
-      
-      // Next 2 bytes: TMP117 (16-bit Big Endian)
-      const tmp117_msb = frameData[tempOffset + 3];
-      const tmp117_lsb = frameData[tempOffset + 4];
-      let tmp117_val = (tmp117_msb << 8) | tmp117_lsb;
-      if (tmp117_val & 0x8000) tmp117_val -= 0x10000;
-      const temp2 = tmp117_val * 0.0078125; // TMP117 to Celsius
-
-      // Create telemetry datasets
-      this._emitFrame({
-        title: 'STM32 Bearing Data',
-        datasets: [
-          { title: 'Vibration', value: vib[vib.length - 1], index: 0, buffer: vib },
-          { title: 'Strain 1',  value: str1[str1.length - 1], index: 1, buffer: str1 },
-          { title: 'Strain 2',  value: str2[str2.length - 1], index: 2, buffer: str2 },
-          { title: 'Strain 3',  value: str3[str3.length - 1], index: 3, buffer: str3 },
-          { title: 'ADC Temp',  value: temp1, index: 4 },
-          { title: 'TMP117',    value: temp2, index: 5 }
-        ],
-        raw: 'Binary Frame (' + FRAME_SIZE + ' bytes)',
-        timestamp: Date.now()
-      });
+      this._emitSTM32BearingFrame(frameData, false, FRAME_SIZE);
     }
+  }
+
+  _findSTM32Header() {
+    if (this._buffer.length < 2) return -1;
+    for (let i = 0; i <= this._buffer.length - 2; i++) {
+      if (this._buffer[i] === 0x5A && this._buffer[i + 1] === 0xA5) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  _stm32PayloadSize() {
+    // Serial Studio strips only the configured delimiters (5A A5 / DD EE).
+    // This STM32 frame keeps the remaining 10-byte header prefix and the
+    // 9-byte reserved tail padding inside the MQTT payload:
+    // 5732-byte full frame - 2-byte start delimiter - 2-byte end delimiter.
+    return 5728;
+  }
+
+  _emitSTM32BearingFrame(frameData, payloadOnly = false, frameSize = frameData.length) {
+    const view = new DataView(frameData.buffer, frameData.byteOffset, frameData.byteLength);
+    const shift = payloadOnly ? -2 : 0;
+    const adjusted = (offset) => offset + shift;
+    const accelScale = 0.000488;
+
+    const toAccelG = (raw, removeGravity = false) => {
+      const accelG = raw * accelScale;
+      if (!removeGravity) return accelG;
+      if (accelG === 0) return 0;
+      return accelG - Math.sign(accelG);
+    };
+
+    // 1. Extract acceleration waveform (int16_t adcx[2132]) - Little Endian.
+    // This channel is treated as the Z-axis acceleration. After converting
+    // the signed ADC values to g, remove the static 1 g gravity component so
+    // the resting baseline is close to 0 g.
+    const accelZ = [];
+    for (let i = 0; i < 2132; i++) {
+      const raw = view.getInt16(adjusted(12) + i * 2, true);
+      accelZ.push(toAccelG(raw, true));
+    }
+
+    const parseSigned24BitRaw = (offset) => {
+      const pos = adjusted(offset);
+      const msb = frameData[pos];
+      const mid = frameData[pos + 1];
+      const lsb = frameData[pos + 2];
+      let val = (msb << 16) | (mid << 8) | lsb;
+      if (val & 0x800000) val -= 0x1000000;
+      return val;
+    };
+
+    const convertAds24ToVoltage = (raw) => (raw * 2.5) / 8388608.0;
+
+    // 2. Extract Strain 1, 2, 3 (each is 160 samples of 24-bit signed data)
+    const str1 = [];
+    const str2 = [];
+    const str3 = [];
+    for (let i = 0; i < 160; i++) {
+      str1.push(convertAds24ToVoltage(parseSigned24BitRaw(4276 + i * 3)));
+      str2.push(convertAds24ToVoltage(parseSigned24BitRaw(4756 + i * 3)));
+      str3.push(convertAds24ToVoltage(parseSigned24BitRaw(5236 + i * 3)));
+    }
+
+    // 3. Extract temperatures
+    const tempOffset = adjusted(5716);
+    const temp1 = convertAds24ToVoltage(parseSigned24BitRaw(5716));
+
+    const tmp117_msb = frameData[tempOffset + 3];
+    const tmp117_lsb = frameData[tempOffset + 4];
+    let tmp117_val = (tmp117_msb << 8) | tmp117_lsb;
+    if (tmp117_val & 0x8000) tmp117_val -= 0x10000;
+    const temp2 = tmp117_val * 0.0078125;
+
+    this._emitFrame({
+      title: 'STM32 Bearing Data',
+      datasets: [
+        { title: 'Accel Z',   value: accelZ[accelZ.length - 1], index: 0, buffer: accelZ },
+        { title: 'Strain 1',  value: str1[str1.length - 1], index: 1, buffer: str1 },
+        { title: 'Strain 2',  value: str2[str2.length - 1], index: 2, buffer: str2 },
+        { title: 'Strain 3',  value: str3[str3.length - 1], index: 3, buffer: str3 },
+        { title: 'ADC Temp',  value: temp1, index: 4 },
+        { title: 'TMP117',    value: temp2, index: 5 }
+      ],
+      raw: (payloadOnly ? 'Binary Payload' : 'Binary Frame') + ` (${frameSize} bytes)`,
+      timestamp: Date.now()
+    });
   }
 
   _parseCSV() {
@@ -328,6 +564,8 @@ export class FrameParser {
 
   reset() {
     this._buffer = new Uint8Array(0);
+    this._mqttBinaryBuffer = new Uint8Array(0);
+    this._mqttHexBuffer = '';
     this._frameCount = 0;
     this._frameRateCounter = 0;
   }

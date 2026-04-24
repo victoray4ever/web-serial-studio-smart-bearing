@@ -3,7 +3,8 @@
  */
 import { eventBus } from '../core/EventBus.js';
 import { appState, BusType, ConnectionState } from '../core/AppState.js';
-import { FrameParser } from '../core/FrameParser.js';
+import { busLabel, t } from '../core/i18n.js';
+import { FrameParser } from '../core/FrameParser.js?v=accel-fix-20260423-2';
 import { SerialDriver } from './SerialDriver.js';
 import { WebSocketDriver } from './WebSocketDriver.js';
 import { MqttDriver } from './MqttDriver.js';
@@ -35,14 +36,14 @@ export class ConnectionManager {
         // Fallback to simulated driver for demo
         this._driver = null;
         appState.connectionState = ConnectionState.Error;
-        eventBus.emit('toast', { type: 'error', message: `${bus} driver not available in this browser` });
+        eventBus.emit('toast', { type: 'error', message: t('messages.driverUnavailable', { bus: busLabel(bus) }) });
         return;
       }
 
       this._driver.on('data', this._connectHandler);
       this._driver.on('error', (err) => {
         console.error('Driver error:', err);
-        eventBus.emit('toast', { type: 'error', message: `Connection error: ${err.message || err}` });
+        eventBus.emit('toast', { type: 'error', message: t('messages.connectionError', { error: err.message || err }) });
       });
       this._driver.on('close', () => {
         this.disconnect();
@@ -50,7 +51,7 @@ export class ConnectionManager {
 
       await this._driver.connect();
       appState.connectionState = ConnectionState.Connected;
-      eventBus.emit('toast', { type: 'success', message: 'Connected successfully!' });
+      eventBus.emit('toast', { type: 'success', message: t('messages.connected') });
 
     } catch (err) {
       console.error('Connection failed:', err);
@@ -58,7 +59,7 @@ export class ConnectionManager {
       setTimeout(() => {
         appState.connectionState = ConnectionState.Disconnected;
       }, 2000);
-      eventBus.emit('toast', { type: 'error', message: `Failed to connect: ${err.message || err}` });
+      eventBus.emit('toast', { type: 'error', message: t('messages.failedConnect', { error: err.message || err }) });
     }
   }
 
@@ -73,7 +74,7 @@ export class ConnectionManager {
       console.warn('Disconnect error:', e);
     }
     appState.connectionState = ConnectionState.Disconnected;
-    eventBus.emit('toast', { type: 'info', message: 'Disconnected' });
+    eventBus.emit('toast', { type: 'info', message: t('messages.disconnected') });
   }
 
   async toggleConnection() {
@@ -90,7 +91,7 @@ export class ConnectionManager {
       await this._driver.send(data);
       eventBus.emit('console:data', { data, direction: 'tx', timestamp: Date.now() });
     } catch (err) {
-      eventBus.emit('toast', { type: 'error', message: `Send failed: ${err.message}` });
+      eventBus.emit('toast', { type: 'error', message: t('messages.sendFailed', { error: err.message }) });
     }
   }
 
