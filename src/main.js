@@ -1,22 +1,25 @@
 /**
- * main.js — Application entry point
+ * main.js - Application entry point
  */
 import { eventBus } from './core/EventBus.js';
 import { appState } from './core/AppState.js';
-import { ConnectionManager } from './io/ConnectionManager.js?v=accel-fix-20260423-4';
-import { DataSimulator } from './io/DataSimulator.js?v=accel-fix-20260423-4';
-import { Toolbar } from './ui/Toolbar.js';
-import { Sidebar } from './ui/Sidebar.js';
-import { Dashboard } from './ui/Dashboard.js?v=gauge-fix-20260423-1';
-import { Console } from './ui/Console.js';
-import { ProjectModel } from './core/ProjectModel.js?v=gauge-fix-20260423-1';
-import { PreferencesDialog } from './ui/PreferencesDialog.js';
+import { applyTheme, modeLabel, t } from './core/i18n.js';
+import { ConnectionManager } from './io/ConnectionManager.js?v=ui-fix-20260424-1';
+import { DataSimulator } from './io/DataSimulator.js?v=ui-fix-20260424-1';
+import { Toolbar } from './ui/Toolbar.js?v=ui-fix-20260424-1';
+import { Sidebar } from './ui/Sidebar.js?v=ui-fix-20260424-1';
+import { Dashboard } from './ui/Dashboard.js?v=ui-fix-20260424-1';
+import { Console } from './ui/Console.js?v=ui-fix-20260424-1';
+import { ProjectModel } from './core/ProjectModel.js?v=ui-fix-20260424-1';
+import { PreferencesDialog } from './ui/PreferencesDialog.js?v=ui-fix-20260424-1';
 
 class App {
   constructor() {
     this._conn = new ConnectionManager();
     this._sim = new DataSimulator();
     this._project = new ProjectModel();
+    this._toolbar = null;
+    this._sidebar = null;
     this._dashboard = null;
     this._console = null;
     this._prefs = null;
@@ -24,6 +27,8 @@ class App {
   }
 
   _init() {
+    applyTheme();
+
     const root = document.getElementById('app');
     root.innerHTML = `
       <div id="toolbar-root"></div>
@@ -38,91 +43,81 @@ class App {
       <div id="toast-container" style="position:fixed;bottom:50px;right:16px;display:flex;flex-direction:column;gap:8px;z-index:500;pointer-events:none"></div>
       <div id="modal-root"></div>`;
 
-    // Toolbar
-    new Toolbar(document.getElementById('toolbar-root'), this._conn, this._sim);
-
-    // Sidebar
-    new Sidebar(document.getElementById('sidebar-root'));
-
-    // Dashboard
-    const dashArea = document.getElementById('dashboard-area');
-    this._dashboard = new Dashboard(dashArea);
-
-    // Console
-    const conArea = document.getElementById('console-area');
-    this._console = new Console(conArea, this._conn);
-
-    // Preferences Dialog
+    this._toolbar = new Toolbar(document.getElementById('toolbar-root'), this._conn, this._sim);
+    this._sidebar = new Sidebar(document.getElementById('sidebar-root'));
+    this._dashboard = new Dashboard(document.getElementById('dashboard-area'));
+    this._console = new Console(document.getElementById('console-area'), this._conn);
     this._prefs = new PreferencesDialog(document.getElementById('modal-root'));
 
-    // Taskbar
     this._renderTaskbar();
-
-    // Event bindings
     this._bindGlobalEvents();
   }
 
   _renderTaskbar() {
     const el = document.getElementById('taskbar-root');
+    const projectTitle = this._project?.title || t('common.noProject');
+
     el.innerHTML = `
       <div class="taskbar">
-        <button class="taskbar-menu-btn" id="tb-menu">☰ Menu</button>
+        <button class="taskbar-menu-btn" id="tb-menu">${t('taskbar.menu')}</button>
         <div class="taskbar-tabs">
-          <button class="taskbar-tab active" data-ws="dashboard">
-            <span class="taskbar-tab-icon">📈</span> Dashboard
+          <button class="taskbar-tab ${appState.currentWorkspace === 'dashboard' ? 'active' : ''}" data-ws="dashboard">
+            <span class="taskbar-tab-marker" aria-hidden="true"></span>
+            <span>${t('common.dashboard')}</span>
           </button>
-          <button class="taskbar-tab" data-ws="console">
-            <span class="taskbar-tab-icon">💻</span> Console
+          <button class="taskbar-tab ${appState.currentWorkspace === 'console' ? 'active' : ''}" data-ws="console">
+            <span class="taskbar-tab-marker" aria-hidden="true"></span>
+            <span>${t('common.console')}</span>
           </button>
         </div>
         <div class="taskbar-status">
           <div class="taskbar-status-item">
-            <span style="color:var(--accent-cyan)">⬡</span>
-            <span id="tb-mode">${appState.operationMode}</span>
+            <span class="taskbar-status-dot mode" aria-hidden="true"></span>
+            <span id="tb-mode">${modeLabel(appState.operationMode)}</span>
           </div>
           <div class="taskbar-status-item">
-            <span>📋</span>
-            <span id="tb-project">No Project</span>
+            <span class="taskbar-status-dot project" aria-hidden="true"></span>
+            <span id="tb-project">${projectTitle}</span>
           </div>
         </div>
       </div>`;
 
-    el.querySelectorAll('.taskbar-tab').forEach(tab => {
+    el.querySelectorAll('.taskbar-tab').forEach((tab) => {
       tab.addEventListener('click', () => {
-        el.querySelectorAll('.taskbar-tab').forEach(t => t.classList.remove('active'));
+        el.querySelectorAll('.taskbar-tab').forEach((node) => node.classList.remove('active'));
         tab.classList.add('active');
         const ws = tab.dataset.ws;
-        document.getElementById('dashboard-area').style.display = ws === 'dashboard' ? 'flex' : 'none';
-        document.getElementById('dashboard-area').style.flexDirection = 'column';
-        document.getElementById('console-area').style.display = ws === 'console' ? 'flex' : 'none';
-        document.getElementById('console-area').style.flexDirection = ws === 'console' ? 'column' : 'none';
+        const dashboardArea = document.getElementById('dashboard-area');
+        const consoleArea = document.getElementById('console-area');
+        dashboardArea.style.display = ws === 'dashboard' ? 'flex' : 'none';
+        dashboardArea.style.flexDirection = 'column';
+        consoleArea.style.display = ws === 'console' ? 'flex' : 'none';
+        consoleArea.style.flexDirection = ws === 'console' ? 'column' : 'none';
         appState.currentWorkspace = ws;
       });
     });
   }
 
   _bindGlobalEvents() {
-    // Sidebar toggle
     eventBus.on('ui:toggleSidebar', () => {
       const sidebar = document.querySelector('.sidebar');
       if (!sidebar) return;
       sidebar.classList.toggle('collapsed');
     });
 
-    // Toast notifications
     eventBus.on('toast', ({ type, message }) => this._showToast(type, message));
 
-    // Empty-state quick-start buttons
     eventBus.on('ui:startSimulator', () => {
-      this._sim?.start?.();
       this._sim?.toggle?.();
-      eventBus.emit('toast', { type: 'info', message: 'Demo Simulator started!' });
     });
+
     eventBus.on('project:openFile', () => {
       const input = document.createElement('input');
-      input.type = 'file'; input.accept = '.json';
+      input.type = 'file';
+      input.accept = '.json';
       input.addEventListener('change', (e) => {
-        const file = e.target.files[0]; if (!file) return;
+        const file = e.target.files[0];
+        if (!file) return;
         const reader = new FileReader();
         reader.onload = (ev) => eventBus.emit('project:load', ev.target.result);
         reader.readAsText(file);
@@ -130,28 +125,24 @@ class App {
       input.click();
     });
 
-
-    // Project load from file
     eventBus.on('project:load', (jsonStr) => {
       if (this._project.loadFromJSON(jsonStr)) {
         this._dashboard.buildFromProject(this._project.project);
-        
-        // Respect the protocol defined in the project file, or default to ProjectFile (CSV)
+
         if (this._project.project.protocol === 'STM32Binary') {
           appState.operationMode = 'STM32Binary';
         } else {
           appState.operationMode = 'ProjectFile';
         }
-        
+
         const tbProject = document.getElementById('tb-project');
         if (tbProject) tbProject.textContent = this._project.title;
-        eventBus.emit('toast', { type: 'success', message: `Loaded: ${this._project.title}` });
+        eventBus.emit('toast', { type: 'success', message: t('messages.loaded', { title: this._project.title }) });
       } else {
-        eventBus.emit('toast', { type: 'error', message: 'Failed to parse project file' });
+        eventBus.emit('toast', { type: 'error', message: t('messages.failedParseProject') });
       }
     });
 
-    // Project save
     eventBus.on('project:save', () => {
       const json = this._project.exportJSON();
       const blob = new Blob([json], { type: 'application/json' });
@@ -162,15 +153,12 @@ class App {
       URL.revokeObjectURL(a.href);
     });
 
-    // Taskbar mode label
     eventBus.on('state:operationModeChanged', (mode) => {
       const el = document.getElementById('tb-mode');
-      if (el) el.textContent = mode;
+      if (el) el.textContent = modeLabel(mode);
     });
 
-    // Apply JSON schema from sidebar editor (DeviceSendsJSON mode)
     eventBus.on('project:applyJSON', (schema) => {
-      // Build a project-compatible structure from the compact JSON format
       const groups = (schema.g || schema.groups || []).map((g, gi) => ({
         title: g.t || g.title || `Group ${gi + 1}`,
         widget: g.w || g.widget || 'MultiPlot',
@@ -185,16 +173,22 @@ class App {
           widget: d.w || 'Bar'
         }))
       }));
+
       const project = {
         title: schema.t || schema.title || 'Device Project',
         groups
       };
+
       this._dashboard.buildFromProject(project);
       const tbProject = document.getElementById('tb-project');
       if (tbProject) tbProject.textContent = project.title;
+      eventBus.emit('toast', { type: 'success', message: t('messages.jsonApplied') });
     });
 
-    // Keyboard shortcuts
+    eventBus.on('state:themeChanged', () => {
+      applyTheme();
+    });
+
     document.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();
@@ -212,23 +206,31 @@ class App {
     if (!container) return;
 
     const colors = {
-      success: '#10b981', error: '#ef4444',
-      info: '#3b82f6', warning: '#f59e0b'
+      success: '#10b981',
+      error: '#ef4444',
+      info: '#3b82f6',
+      warning: '#f59e0b'
     };
-    const icons = { success: '✅', error: '❌', info: 'ℹ️', warning: '⚠️' };
+
+    const icons = {
+      success: 'OK',
+      error: 'ERR',
+      info: 'INFO',
+      warning: 'WARN'
+    };
 
     const toast = document.createElement('div');
     toast.style.cssText = `
       display:flex;align-items:center;gap:8px;
       padding:10px 14px;
-      background:rgba(12,18,32,0.95);
+      background:var(--glass-bg);
       border:1px solid ${colors[type]}40;
       border-left:3px solid ${colors[type]};
       border-radius:8px;
-      color:#f1f5f9;
+      color:var(--text-primary);
       font-size:13px;
       pointer-events:auto;
-      box-shadow:0 4px 12px rgba(0,0,0,0.5);
+      box-shadow:0 4px 12px rgba(0,0,0,0.18);
       animation:fadeInUp 0.2s ease;
       backdrop-filter:blur(8px);
       max-width:320px;
@@ -244,5 +246,4 @@ class App {
   }
 }
 
-// Boot the app when DOM is ready
 document.addEventListener('DOMContentLoaded', () => new App());

@@ -2,7 +2,7 @@
  * Console - Terminal console panel
  */
 import { eventBus } from '../core/EventBus.js';
-import { appState } from '../core/AppState.js';
+import { t } from '../core/i18n.js';
 import { formatTime } from '../utils/helpers.js';
 
 export class Console {
@@ -24,20 +24,20 @@ export class Console {
       <div class="console-panel">
         <div class="console-toolbar">
           <div class="console-toolbar-group">
-            <button class="btn btn-icon" id="con-clear" title="Clear">🗑 Clear</button>
-            <button class="btn btn-icon" id="con-pause" title="Pause scroll">⏸</button>
-            <button class="btn btn-icon" id="con-hex" title="Toggle Hex mode">HEX</button>
-            <button class="btn btn-icon" id="con-autoscroll" title="Auto-scroll" style="color:var(--accent-blue)">↓ Auto</button>
+            <button class="btn btn-icon" id="con-clear" title="${t('console.clear')}">CLEAR</button>
+            <button class="btn btn-icon" id="con-pause" title="${t('console.pause')}">PAUSE</button>
+            <button class="btn btn-icon" id="con-hex" title="${t('console.hex')}">${t('console.hex')}</button>
+            <button class="btn btn-icon" id="con-autoscroll" title="${t('console.auto')}" style="color:var(--accent-blue)">AUTO</button>
           </div>
           <div class="console-toolbar-group" style="margin-left:auto">
-            <button class="btn btn-icon" id="con-download" title="Download log">⬇ Export</button>
+            <button class="btn btn-icon" id="con-download" title="${t('console.export')}">${t('console.export')}</button>
           </div>
         </div>
         <div class="console-output" id="con-output"></div>
         <div class="console-input-area">
           <span class="console-input-prefix">&gt;</span>
-          <input class="console-input" id="con-input" type="text" placeholder="Type command and press Enter…" autocomplete="off" spellcheck="false"/>
-          <button class="btn btn-primary" id="con-send" style="padding:4px 12px;font-size:12px">Send</button>
+          <input class="console-input" id="con-input" type="text" placeholder="${t('console.placeholder')}" autocomplete="off" spellcheck="false"/>
+          <button class="btn btn-primary" id="con-send" style="padding:4px 12px;font-size:12px">${t('console.send')}</button>
         </div>
       </div>`;
 
@@ -46,7 +46,7 @@ export class Console {
     this._container.querySelector('#con-clear').addEventListener('click', () => this._clear());
     this._container.querySelector('#con-pause').addEventListener('click', (e) => {
       this._paused = !this._paused;
-      e.target.textContent = this._paused ? '▶' : '⏸';
+      e.target.textContent = this._paused ? 'RESUME' : 'PAUSE';
       e.target.style.color = this._paused ? 'var(--accent-amber)' : '';
     });
     this._container.querySelector('#con-hex').addEventListener('click', (e) => {
@@ -63,9 +63,10 @@ export class Console {
     const sendFn = () => {
       const val = input.value.trim();
       if (!val) return;
-      this._conn?.sendData(val + '\n');
+      this._conn?.sendData(`${val}\n`);
       input.value = '';
     };
+
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendFn(); });
     this._container.querySelector('#con-send').addEventListener('click', sendFn);
   }
@@ -77,7 +78,7 @@ export class Console {
     let displayData = '';
     if (data instanceof Uint8Array) {
       if (this._hexMode) {
-        displayData = Array.from(data).map(b => b.toString(16).padStart(2, '0')).join(' ');
+        displayData = Array.from(data).map((b) => b.toString(16).padStart(2, '0')).join(' ');
       } else {
         const decoder = new TextDecoder();
         displayData = decoder.decode(data).replace(/\r?\n/g, '').replace(/[\x00-\x1F\x7F-\x9F]/g, '.').trim();
@@ -97,7 +98,6 @@ export class Console {
     this._outputEl.appendChild(line);
     this._lines.push(line);
 
-    // Trim old lines
     while (this._lines.length > this._maxLines) {
       this._lines.shift().remove();
     }
@@ -108,7 +108,7 @@ export class Console {
   }
 
   _escape(str) {
-    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
   _clear() {
@@ -118,11 +118,11 @@ export class Console {
   }
 
   _downloadLog() {
-    const text = this._lines.map(l => l.textContent.trim()).join('\n');
+    const text = this._lines.map((line) => line.textContent.trim()).join('\n');
     const blob = new Blob([text], { type: 'text/plain' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `console_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.txt`;
+    a.download = `console_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.txt`;
     a.click();
     URL.revokeObjectURL(a.href);
   }

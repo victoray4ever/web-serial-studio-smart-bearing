@@ -3,6 +3,7 @@
  */
 import { eventBus } from '../core/EventBus.js';
 import { appState, ConnectionState } from '../core/AppState.js';
+import { t } from '../core/i18n.js';
 import { FrameParser } from '../core/FrameParser.js?v=accel-fix-20260423-2';
 
 export class DataSimulator {
@@ -19,7 +20,7 @@ export class DataSimulator {
     this._running = true;
     this._t = 0;
     appState.connectionState = ConnectionState.Connected;
-    eventBus.emit('toast', { type: 'success', message: 'Demo simulator started (20 Hz)' });
+    eventBus.emit('toast', { type: 'success', message: t('messages.demoRunning') });
 
     this._timer = setInterval(() => {
       this._t += 0.05;
@@ -34,7 +35,7 @@ export class DataSimulator {
     clearInterval(this._timer);
     this._timer = null;
     appState.connectionState = ConnectionState.Disconnected;
-    eventBus.emit('toast', { type: 'info', message: 'Demo simulator stopped' });
+    eventBus.emit('toast', { type: 'info', message: t('messages.demoStopped') });
   }
 
   toggle() {
@@ -48,6 +49,15 @@ export class DataSimulator {
     if (appState.operationMode === 'STM32Binary') {
       return this._generateSTM32Frame();
     }
+
+    const temp = 24 + Math.sin(this._t * 1.2) * 6;
+    const humidity = 58 + Math.cos(this._t * 0.8) * 12;
+    const pressure = 1012 + Math.sin(this._t * 0.35) * 8;
+    const accelX = Math.sin(this._t * 2.6) * 1.1;
+    const accelY = Math.cos(this._t * 2.1) * 0.9;
+    const accelZ = 9.81 + Math.sin(this._t * 1.7) * 0.3;
+    const heading = (this._t * 24) % 360;
+    const voltage = 3.7 + Math.sin(this._t * 0.25) * 0.08;
 
     const csv = [
       temp.toFixed(2),

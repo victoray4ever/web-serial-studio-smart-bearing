@@ -3,17 +3,24 @@
  */
 import { eventBus } from '../core/EventBus.js';
 import { appState, OperationMode, BusType, ConnectionState } from '../core/AppState.js';
+import { busLabel, t } from '../core/i18n.js';
 
 export class Sidebar {
   constructor(container) {
     this._container = container;
+    this._lastReceivedJSON = '';
     this._render();
-    this._bindEvents();
+    this._bindDomEvents();
     this._updateDriverPanel();
     this._updateStatusDot();
     eventBus.on('state:busTypeChanged', () => this._updateDriverPanel());
     eventBus.on('state:connectionStateChanged', () => this._updateStatusDot());
     eventBus.on('state:operationModeChanged', () => this._updateDriverPanel());
+    eventBus.on('frame:receivedJSON', (json) => {
+      this._lastReceivedJSON = JSON.stringify(json).slice(0, 200);
+      const lastEl = this._container.querySelector('#json-last-received');
+      if (lastEl) lastEl.textContent = this._lastReceivedJSON;
+    });
   }
 
   _render() {
@@ -21,169 +28,151 @@ export class Sidebar {
       <div class="sidebar">
         <div class="sidebar-header">
           <div class="sidebar-title">
-            <span class="sidebar-title-icon">⚙️</span>
-            <span>Device Setup</span>
+            <span class="sidebar-title-icon" aria-hidden="true"></span>
+            <span>${t('sidebar.title')}</span>
           </div>
         </div>
         <div class="sidebar-scroll">
-
-          <!-- Frame Parsing Mode -->
           <div class="sidebar-section">
-            <div class="sidebar-section-label">Frame Parsing</div>
+            <div class="sidebar-section-label">${t('sidebar.frameParsing')}</div>
             <div class="sidebar-section-content">
               <label class="radio-wrap">
                 <input type="radio" name="opMode" value="QuickPlot" ${appState.operationMode === OperationMode.QuickPlot ? 'checked' : ''}>
-                <span>Quick Plot (CSV values)</span>
+                <span>${t('sidebar.quickPlot')}</span>
               </label>
               <label class="radio-wrap">
                 <input type="radio" name="opMode" value="DeviceSendsJSON" ${appState.operationMode === OperationMode.DeviceSendsJSON ? 'checked' : ''}>
-                <span>Device Sends JSON</span>
+                <span>${t('sidebar.deviceSendsJson')}</span>
               </label>
               <label class="radio-wrap">
                 <input type="radio" name="opMode" value="ProjectFile" ${appState.operationMode === OperationMode.ProjectFile ? 'checked' : ''}>
-                <span>Project File</span>
+                <span>${t('sidebar.projectFile')}</span>
               </label>
             </div>
           </div>
 
-          <!-- Data Export -->
           <div class="sidebar-section">
-            <div class="sidebar-section-label">Data Export</div>
+            <div class="sidebar-section-label">${t('sidebar.dataExport')}</div>
             <div class="sidebar-section-content">
               <label class="checkbox-wrap">
                 <input type="checkbox" id="chk-csv" ${appState.csvExportEnabled ? 'checked' : ''}>
-                <span>Export CSV file</span>
+                <span>${t('sidebar.exportCsv')}</span>
               </label>
               <label class="checkbox-wrap">
                 <input type="checkbox" id="chk-console-log" ${appState.consoleExportEnabled ? 'checked' : ''}>
-                <span>Export console log</span>
+                <span>${t('sidebar.exportConsole')}</span>
               </label>
             </div>
           </div>
 
-          <!-- I/O Interface -->
           <div class="sidebar-section">
-            <div class="sidebar-section-label">I/O Interface</div>
+            <div class="sidebar-section-label">${t('sidebar.ioInterface')}</div>
             <div class="sidebar-section-content">
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
-                <button class="btn bus-btn ${appState.busType === BusType.Serial ? 'btn-primary' : ''}" data-bus="Serial">⚡ Serial</button>
-                <button class="btn bus-btn ${appState.busType === BusType.Bluetooth ? 'btn-primary' : ''}" data-bus="Bluetooth">📶 BLE</button>
-                <button class="btn bus-btn ${appState.busType === BusType.WebSocket ? 'btn-primary' : ''}" data-bus="WebSocket">🌐 WebSocket</button>
-                <button class="btn bus-btn ${appState.busType === BusType.MQTT ? 'btn-primary' : ''}" data-bus="MQTT">📡 MQTT</button>
+                <button class="btn bus-btn ${appState.busType === BusType.Serial ? 'btn-primary' : ''}" data-bus="Serial">${t('toolbar.uart')}</button>
+                <button class="btn bus-btn ${appState.busType === BusType.Bluetooth ? 'btn-primary' : ''}" data-bus="Bluetooth">${t('toolbar.ble')}</button>
+                <button class="btn bus-btn ${appState.busType === BusType.WebSocket ? 'btn-primary' : ''}" data-bus="WebSocket">WebSocket</button>
+                <button class="btn bus-btn ${appState.busType === BusType.MQTT ? 'btn-primary' : ''}" data-bus="MQTT">MQTT</button>
               </div>
             </div>
           </div>
 
-          <!-- Driver Config Panel (dynamic) -->
           <div class="sidebar-section" id="driver-panel"></div>
 
-          <!-- JSON Project Editor (DeviceSendsJSON mode) -->
           <div class="sidebar-section" id="json-editor-section" style="display:none">
-            <div class="sidebar-section-label">JSON Project Editor</div>
+            <div class="sidebar-section-label">${t('sidebar.jsonProjectEditor')}</div>
             <div class="json-editor-panel">
               <div style="font-size:10px;color:var(--text-muted);line-height:1.5;margin-bottom:4px">
-                Device should send JSON wrapped in <code style="color:var(--accent-cyan)">/* ... */</code> delimiters.
-                Edit the schema below to customize dashboard widgets.
+                ${t('sidebar.jsonEditorHint')}
               </div>
               <textarea class="json-editor-textarea" id="json-schema-editor" spellcheck="false" rows="10">${JSON.stringify({
-  "t": "My Device",
-  "g": [
+  t: 'My Device',
+  g: [
     {
-      "t": "Sensors",
-      "w": "multiplot",
-      "d": [
-        {"t": "Temperature", "v": 0, "u": "\u00b0C", "g": true, "b": true, "min": -20, "max": 80},
-        {"t": "Humidity",    "v": 0, "u": "%",   "g": false,"b": true, "min": 0,   "max": 100}
+      t: 'Sensors',
+      w: 'multiplot',
+      d: [
+        { t: 'Temperature', v: 0, u: 'C', g: true, b: true, min: -20, max: 80 },
+        { t: 'Humidity', v: 0, u: '%', g: false, b: true, min: 0, max: 100 }
       ]
     }
   ]
 }, null, 2)}</textarea>
               <div style="display:flex;align-items:center;justify-content:space-between">
-                <span class="json-editor-status valid" id="json-status">✓ Valid JSON</span>
+                <span class="json-editor-status valid" id="json-status">OK ${t('sidebar.validJson')}</span>
                 <div style="display:flex;gap:4px">
-                  <button class="btn" id="btn-json-load" style="font-size:11px;padding:3px 8px">📂 Load JSON</button>
-                  <button class="btn btn-primary" id="btn-json-apply" style="font-size:11px;padding:3px 8px">▶ Apply</button>
+                  <button class="btn" id="btn-json-load" style="font-size:11px;padding:3px 8px">${t('sidebar.loadJson')}</button>
+                  <button class="btn btn-primary" id="btn-json-apply" style="font-size:11px;padding:3px 8px">${t('sidebar.apply')}</button>
                 </div>
               </div>
               <div style="font-size:10px;color:var(--text-muted);margin-top:4px">
-                <strong style="color:var(--text-secondary)">Last received JSON:</strong>
-                <div id="json-last-received" style="color:var(--accent-green);font-family:var(--font-mono);font-size:10px;max-height:80px;overflow-y:auto;margin-top:2px;word-break:break-all">None</div>
+                <strong style="color:var(--text-secondary)">${t('sidebar.lastReceivedJson')}</strong>
+                <div id="json-last-received" style="color:var(--accent-green);font-family:var(--font-mono);font-size:10px;max-height:80px;overflow-y:auto;margin-top:2px;word-break:break-all">${this._lastReceivedJSON || t('sidebar.none')}</div>
               </div>
             </div>
           </div>
 
-          <!-- Frame Config -->
           <div class="sidebar-section">
-            <div class="sidebar-section-label">Frame Settings</div>
+            <div class="sidebar-section-label">${t('sidebar.frameSettings')}</div>
             <div class="sidebar-section-content">
               <div class="form-row">
-                <div class="form-label">End Delimiter</div>
+                <div class="form-label">${t('sidebar.endDelimiter')}</div>
                 <input class="form-input" id="cfg-end-del" value="${appState.frameConfig.endDelimiter}" placeholder="\\n">
               </div>
               <div class="form-row">
-                <div class="form-label">Start Delimiter</div>
-                <input class="form-input" id="cfg-start-del" value="${appState.frameConfig.startDelimiter}" placeholder="Leave empty">
+                <div class="form-label">${t('sidebar.startDelimiter')}</div>
+                <input class="form-input" id="cfg-start-del" value="${appState.frameConfig.startDelimiter}" placeholder="${t('sidebar.leaveEmpty')}">
               </div>
             </div>
           </div>
 
-          <!-- History Points -->
           <div class="sidebar-section">
-            <div class="sidebar-section-label">Plot Settings</div>
+            <div class="sidebar-section-label">${t('sidebar.plotSettings')}</div>
             <div class="sidebar-section-content">
               <div class="form-row">
-                <div class="form-label">History Points</div>
+                <div class="form-label">${t('sidebar.historyPoints')}</div>
                 <input class="form-input" id="cfg-points" type="number" min="10" max="5000" value="${appState.points}">
               </div>
             </div>
           </div>
-
         </div>
         <div class="sidebar-status">
           <div class="sidebar-status-dot" id="status-dot"></div>
-          <span id="status-text">Disconnected</span>
+          <span id="status-text">${t('sidebar.disconnected')}</span>
         </div>
       </div>`;
   }
 
-  _bindEvents() {
-    // Operation mode
-    this._container.querySelectorAll('input[name="opMode"]').forEach(r => {
+  _bindDomEvents() {
+    this._container.querySelectorAll('input[name="opMode"]').forEach((r) => {
       r.addEventListener('change', () => {
         appState.operationMode = r.value;
         this._toggleJsonEditor(r.value);
       });
     });
 
-    // Export toggles
     const csvChk = this._container.querySelector('#chk-csv');
     if (csvChk) csvChk.addEventListener('change', () => { appState.csvExportEnabled = csvChk.checked; });
     const conChk = this._container.querySelector('#chk-console-log');
     if (conChk) conChk.addEventListener('change', () => { appState.consoleExportEnabled = conChk.checked; });
 
-    // Bus type buttons
-    this._container.querySelectorAll('.bus-btn').forEach(btn => {
+    this._container.querySelectorAll('.bus-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         appState.busType = btn.dataset.bus;
-        this._container.querySelectorAll('.bus-btn').forEach(b => b.classList.remove('btn-primary'));
+        this._container.querySelectorAll('.bus-btn').forEach((node) => node.classList.remove('btn-primary'));
         btn.classList.add('btn-primary');
       });
     });
 
-    // Frame config
     const endDel = this._container.querySelector('#cfg-end-del');
     if (endDel) endDel.addEventListener('change', () => appState.updateFrameConfig({ endDelimiter: endDel.value }));
     const startDel = this._container.querySelector('#cfg-start-del');
     if (startDel) startDel.addEventListener('change', () => appState.updateFrameConfig({ startDelimiter: startDel.value }));
 
-    // Points
     const pointsInput = this._container.querySelector('#cfg-points');
-    if (pointsInput) pointsInput.addEventListener('change', () => { appState.points = parseInt(pointsInput.value) || 100; });
+    if (pointsInput) pointsInput.addEventListener('change', () => { appState.points = parseInt(pointsInput.value, 10) || 100; });
 
-    // JSON editor
     this._bindJsonEditor();
-
-    // Show/hide JSON editor based on current mode
     this._toggleJsonEditor(appState.operationMode);
   }
 
@@ -200,36 +189,39 @@ export class Sidebar {
     const loadBtn = this._container.querySelector('#btn-json-load');
     if (!textarea) return;
 
-    // Live validation
     textarea.addEventListener('input', () => {
       try {
         JSON.parse(textarea.value);
-        if (statusEl) { statusEl.textContent = '✓ Valid JSON'; statusEl.className = 'json-editor-status valid'; }
+        if (statusEl) {
+          statusEl.textContent = `OK ${t('sidebar.validJson')}`;
+          statusEl.className = 'json-editor-status valid';
+        }
         if (applyBtn) applyBtn.disabled = false;
       } catch (e) {
-        if (statusEl) { statusEl.textContent = '✗ ' + e.message.slice(0, 40); statusEl.className = 'json-editor-status invalid'; }
+        if (statusEl) {
+          statusEl.textContent = e.message.slice(0, 40);
+          statusEl.className = 'json-editor-status invalid';
+        }
         if (applyBtn) applyBtn.disabled = true;
       }
     });
 
-    // Apply button — apply the JSON schema to the dashboard
     if (applyBtn) {
       applyBtn.addEventListener('click', () => {
         try {
           const schema = JSON.parse(textarea.value);
           eventBus.emit('project:applyJSON', schema);
-          eventBus.emit('toast', { type: 'success', message: 'JSON schema applied to dashboard!' });
         } catch (e) {
-          eventBus.emit('toast', { type: 'error', message: 'Invalid JSON: ' + e.message });
+          eventBus.emit('toast', { type: 'error', message: t('messages.invalidJson', { error: e.message }) });
         }
       });
     }
 
-    // Load from file
     if (loadBtn) {
       loadBtn.addEventListener('click', () => {
         const input = document.createElement('input');
-        input.type = 'file'; input.accept = '.json';
+        input.type = 'file';
+        input.accept = '.json';
         input.addEventListener('change', (e) => {
           const file = e.target.files[0];
           if (!file) return;
@@ -243,100 +235,93 @@ export class Sidebar {
         input.click();
       });
     }
-
-    // Listen for incoming JSON frames and display them
-    eventBus.on('frame:receivedJSON', (json) => {
-      const lastEl = this._container.querySelector('#json-last-received');
-      if (lastEl) lastEl.textContent = JSON.stringify(json).slice(0, 200);
-    });
   }
 
   _buildMqttConfigPanel(cfg) {
     const path = cfg.path || '/mqtt';
     const host = cfg.host || '';
     const port = Number(cfg.port) || (cfg.useSSL ? 8084 : 8083);
-    const preview = host ? `${cfg.useSSL ? 'wss' : 'ws'}://${host}:${port}${path.startsWith('/') ? path : `/${path}`}` : 'Waiting for host...';
+    const preview = host ? `${cfg.useSSL ? 'wss' : 'ws'}://${host}:${port}${path.startsWith('/') ? path : `/${path}`}` : t('sidebar.waitingForHost');
+
     return `
       <div class="mqtt-config-grid">
         <div class="form-row">
-          <div class="form-label">MQTT Version</div>
+          <div class="form-label">${t('sidebar.mqttVersion')}</div>
           <select class="form-select" id="drv-mqtt-version">
-            ${['3.1', '3.1.1', '5.0'].map(v => `<option ${cfg.version === v ? 'selected' : ''} value="${v}">MQTT ${v}</option>`).join('')}
+            ${['3.1', '3.1.1', '5.0'].map((v) => `<option ${cfg.version === v ? 'selected' : ''} value="${v}">MQTT ${v}</option>`).join('')}
           </select>
         </div>
         <div class="form-row">
-          <div class="form-label">Mode</div>
+          <div class="form-label">${t('sidebar.mode')}</div>
           <select class="form-select" id="drv-mqtt-mode">
             ${[
-              ['PubSub', 'Publish + Subscribe'],
-              ['SubscribeOnly', 'Subscribe Only'],
-              ['PublishOnly', 'Publish Only']
+              ['PubSub', t('sidebar.subscribePublish')],
+              ['SubscribeOnly', t('sidebar.subscribeOnly')],
+              ['PublishOnly', t('sidebar.publishOnly')]
             ].map(([value, label]) => `<option ${cfg.mode === value ? 'selected' : ''} value="${value}">${label}</option>`).join('')}
           </select>
         </div>
         <div class="form-row">
-          <div class="form-label">QoS Level</div>
+          <div class="form-label">${t('sidebar.qos')}</div>
           <select class="form-select" id="drv-mqtt-qos">
             ${[
-              [0, '0 - At most once'],
-              [1, '1 - At least once'],
-              [2, '2 - Exactly once']
+              [0, t('sidebar.atMostOnce')],
+              [1, t('sidebar.atLeastOnce')],
+              [2, t('sidebar.exactlyOnce')]
             ].map(([value, label]) => `<option ${Number(cfg.qos) === value ? 'selected' : ''} value="${value}">${label}</option>`).join('')}
           </select>
         </div>
         <div class="form-row">
-          <div class="form-label">Keep Alive (s)</div>
+          <div class="form-label">${t('sidebar.keepAlive')}</div>
           <input class="form-input" id="drv-mqtt-keepalive" type="number" min="5" max="3600" value="${cfg.keepalive ?? 60}">
         </div>
         <div class="form-row">
-          <div class="form-label">Host</div>
+          <div class="form-label">${t('sidebar.host')}</div>
           <input class="form-input" id="drv-mqtt-host" value="${host}" placeholder="broker.example.com">
         </div>
         <div class="form-row">
-          <div class="form-label">Port</div>
+          <div class="form-label">${t('sidebar.port')}</div>
           <input class="form-input" id="drv-mqtt-port" type="number" min="1" max="65535" value="${port}">
         </div>
         <div class="form-row">
-          <div class="form-label">Topic</div>
+          <div class="form-label">${t('sidebar.topic')}</div>
           <input class="form-input" id="drv-mqtt-topic" value="${cfg.topic || ''}" placeholder="sensor/data">
         </div>
         <div class="form-row">
-          <div class="form-label">WebSocket Path</div>
+          <div class="form-label">${t('sidebar.websocketPath')}</div>
           <input class="form-input" id="drv-mqtt-path" value="${path}" placeholder="/mqtt">
         </div>
         <div class="form-row">
-          <div class="form-label">Username</div>
-          <input class="form-input" id="drv-mqtt-user" value="${cfg.username || ''}" placeholder="Optional">
+          <div class="form-label">${t('sidebar.username')}</div>
+          <input class="form-input" id="drv-mqtt-user" value="${cfg.username || ''}" placeholder="${t('sidebar.optional')}">
         </div>
         <div class="form-row">
-          <div class="form-label">Password</div>
-          <input class="form-input" id="drv-mqtt-pass" type="password" value="${cfg.password || ''}" placeholder="Optional">
+          <div class="form-label">${t('sidebar.password')}</div>
+          <input class="form-input" id="drv-mqtt-pass" type="password" value="${cfg.password || ''}" placeholder="${t('sidebar.optional')}">
         </div>
         <div class="form-row">
-          <div class="form-label">Client ID</div>
+          <div class="form-label">${t('sidebar.clientId')}</div>
           <input class="form-input mono" id="drv-mqtt-clientid" value="${cfg.clientId || ''}" placeholder="web-serial-studio-client">
         </div>
         <div class="form-row mqtt-toggles">
           <label class="checkbox-wrap">
             <input type="checkbox" id="drv-mqtt-ssl" ${cfg.useSSL ? 'checked' : ''}>
-            <span>Enable SSL / TLS</span>
+            <span>${t('sidebar.enableSsl')}</span>
           </label>
           <label class="checkbox-wrap">
             <input type="checkbox" id="drv-mqtt-clean" ${cfg.clean !== false ? 'checked' : ''}>
-            <span>Clean Session</span>
+            <span>${t('sidebar.cleanSession')}</span>
           </label>
           <label class="checkbox-wrap">
             <input type="checkbox" id="drv-mqtt-retain" ${cfg.retain ? 'checked' : ''}>
-            <span>Retain Publish</span>
+            <span>${t('sidebar.retainPublish')}</span>
           </label>
         </div>
       </div>
       <div class="mqtt-helper-card">
-        <div class="mqtt-helper-title">Browser WebSocket Endpoint</div>
+        <div class="mqtt-helper-title">${t('sidebar.browserEndpoint')}</div>
         <div class="mqtt-helper-url mono">${preview}</div>
-        <div class="mqtt-helper-note">
-          Browser MQTT must connect through a WebSocket listener. A raw TCP MQTT port like 1883 will fail unless your broker exposes MQTT over WS/WSS on that port.
-        </div>
+        <div class="mqtt-helper-note">${t('sidebar.mqttHelper')}</div>
       </div>`;
   }
 
@@ -367,7 +352,7 @@ export class Sidebar {
       appState.updateMqttConfig(next);
 
       const preview = panel.querySelector('.mqtt-helper-url');
-      if (preview) preview.textContent = next.brokerUrl || 'Waiting for host...';
+      if (preview) preview.textContent = next.brokerUrl || t('sidebar.waitingForHost');
     };
 
     panel.querySelectorAll('#drv-mqtt-version, #drv-mqtt-mode, #drv-mqtt-qos, #drv-mqtt-keepalive, #drv-mqtt-host, #drv-mqtt-port, #drv-mqtt-topic, #drv-mqtt-path, #drv-mqtt-user, #drv-mqtt-pass, #drv-mqtt-clientid, #drv-mqtt-ssl, #drv-mqtt-clean, #drv-mqtt-retain')
@@ -382,68 +367,69 @@ export class Sidebar {
     if (!panel) return;
 
     const bus = appState.busType;
-    let html = `<div class="sidebar-section-label">${bus} Configuration</div><div class="driver-config">`;
+    let html = '';
 
     if (bus === BusType.Serial) {
       const cfg = appState.serialConfig;
-      html += `
+      html = `<div class="sidebar-section-label">${t('sidebar.serialConfiguration')}</div><div class="driver-config">
         <div class="form-row">
-          <div class="form-label">Baud Rate</div>
+          <div class="form-label">${t('sidebar.baudRate')}</div>
           <select class="form-select" id="drv-baud">
-            ${[300,1200,2400,4800,9600,19200,38400,57600,115200,230400,460800,921600].map(b =>
-              `<option ${b === cfg.baudRate ? 'selected' : ''} value="${b}">${b}</option>`).join('')}
+            ${[300, 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600].map((b) => `<option ${b === cfg.baudRate ? 'selected' : ''} value="${b}">${b}</option>`).join('')}
           </select>
         </div>
         <div class="form-row">
-          <div class="form-label">Data Bits</div>
+          <div class="form-label">${t('sidebar.dataBits')}</div>
           <select class="form-select" id="drv-databits">
-            ${[7,8].map(b => `<option ${b === cfg.dataBits ? 'selected' : ''} value="${b}">${b}</option>`).join('')}
+            ${[7, 8].map((b) => `<option ${b === cfg.dataBits ? 'selected' : ''} value="${b}">${b}</option>`).join('')}
           </select>
         </div>
         <div class="form-row">
-          <div class="form-label">Stop Bits</div>
+          <div class="form-label">${t('sidebar.stopBits')}</div>
           <select class="form-select" id="drv-stopbits">
-            ${[1,2].map(b => `<option ${b === cfg.stopBits ? 'selected' : ''} value="${b}">${b}</option>`).join('')}
+            ${[1, 2].map((b) => `<option ${b === cfg.stopBits ? 'selected' : ''} value="${b}">${b}</option>`).join('')}
           </select>
         </div>
         <div class="form-row">
-          <div class="form-label">Parity</div>
+          <div class="form-label">${t('sidebar.parity')}</div>
           <select class="form-select" id="drv-parity">
-            ${['none','even','odd','mark','space'].map(p => `<option ${p === cfg.parity ? 'selected' : ''} value="${p}">${p}</option>`).join('')}
+            ${['none', 'even', 'odd', 'mark', 'space'].map((p) => `<option ${p === cfg.parity ? 'selected' : ''} value="${p}">${p}</option>`).join('')}
           </select>
-        </div>`;
+        </div>
+      </div>`;
     } else if (bus === BusType.WebSocket) {
       const cfg = appState.wsConfig;
-      html += `
+      html = `<div class="sidebar-section-label">${t('sidebar.websocketConfiguration')}</div><div class="driver-config">
         <div class="form-row">
-          <div class="form-label">URL</div>
+          <div class="form-label">${t('sidebar.url')}</div>
           <input class="form-input" id="drv-ws-url" value="${cfg.url}" placeholder="ws://localhost:8080">
-        </div>`;
+        </div>
+      </div>`;
     } else if (bus === BusType.MQTT) {
-      const cfg = appState.mqttConfig;
-      html += this._buildMqttConfigPanel(cfg);
+      html = `<div class="sidebar-section-label">${t('sidebar.mqttConfiguration')}</div><div class="driver-config">${this._buildMqttConfigPanel(appState.mqttConfig)}</div>`;
     } else if (bus === BusType.Bluetooth) {
-      html += `<div style="color:var(--text-muted);font-size:var(--font-size-xs);line-height:1.6;">
-        Web Bluetooth API will prompt for device selection when you click Connect.<br>
-        Requires a GATT service exposing a readable+notify characteristic.
+      html = `<div class="sidebar-section-label">${t('sidebar.bluetoothConfiguration')}</div><div class="driver-config">
+        <div style="color:var(--text-muted);font-size:var(--font-size-xs);line-height:1.6;">
+          ${t('sidebar.bluetoothHint')}
+        </div>
       </div>`;
     }
 
-    html += '</div>';
     panel.innerHTML = html;
 
-    // Bind driver-specific inputs
     if (bus === BusType.Serial) {
-      ['baud','databits','stopbits','parity'].forEach(id => {
+      ['baud', 'databits', 'stopbits', 'parity'].forEach((id) => {
         const el = panel.querySelector(`#drv-${id}`);
-        if (el) el.addEventListener('change', () => {
-          appState.updateSerialConfig({
-            baudRate: parseInt(panel.querySelector('#drv-baud')?.value) || 115200,
-            dataBits: parseInt(panel.querySelector('#drv-databits')?.value) || 8,
-            stopBits: parseInt(panel.querySelector('#drv-stopbits')?.value) || 1,
-            parity: panel.querySelector('#drv-parity')?.value || 'none',
+        if (el) {
+          el.addEventListener('change', () => {
+            appState.updateSerialConfig({
+              baudRate: parseInt(panel.querySelector('#drv-baud')?.value, 10) || 115200,
+              dataBits: parseInt(panel.querySelector('#drv-databits')?.value, 10) || 8,
+              stopBits: parseInt(panel.querySelector('#drv-stopbits')?.value, 10) || 1,
+              parity: panel.querySelector('#drv-parity')?.value || 'none'
+            });
           });
-        });
+        }
       });
     } else if (bus === BusType.WebSocket) {
       panel.querySelector('#drv-ws-url')?.addEventListener('change', (e) => appState.updateWsConfig({ url: e.target.value }));
@@ -460,15 +446,15 @@ export class Sidebar {
     dot.className = 'sidebar-status-dot';
     if (state === ConnectionState.Connected) {
       dot.classList.add('connected');
-      text.textContent = `Connected via ${appState.busType}`;
+      text.textContent = t('sidebar.connectedVia', { bus: busLabel(appState.busType) });
     } else if (state === ConnectionState.Connecting) {
       dot.classList.add('connecting');
-      text.textContent = 'Connecting…';
+      text.textContent = t('sidebar.connecting');
     } else if (state === ConnectionState.Error) {
       dot.classList.add('error');
-      text.textContent = 'Connection Error';
+      text.textContent = t('sidebar.connectionError');
     } else {
-      text.textContent = 'Disconnected';
+      text.textContent = t('sidebar.disconnected');
     }
   }
 }

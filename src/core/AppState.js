@@ -49,6 +49,8 @@ class AppState {
     this._operationMode = OperationMode.QuickPlot;
     this._busType = BusType.Serial;
     this._connectionState = ConnectionState.Disconnected;
+    this._locale = 'zh-CN';
+    this._theme = 'dark';
     this._project = null;
     this._projectFileName = '';
     this._csvExportEnabled = true;
@@ -92,6 +94,8 @@ class AppState {
   get busType() { return this._busType; }
   get connectionState() { return this._connectionState; }
   get isConnected() { return this._connectionState === ConnectionState.Connected; }
+  get locale() { return this._locale; }
+  get theme() { return this._theme; }
   get project() { return this._project; }
   get projectFileName() { return this._projectFileName; }
   get csvExportEnabled() { return this._csvExportEnabled; }
@@ -123,6 +127,18 @@ class AppState {
     if (this._connectionState === v) return;
     this._connectionState = v;
     eventBus.emit('state:connectionStateChanged', v);
+  }
+  set locale(v) {
+    if (!v || this._locale === v) return;
+    this._locale = v;
+    eventBus.emit('state:localeChanged', v);
+    this._saveSettings();
+  }
+  set theme(v) {
+    if (!v || this._theme === v) return;
+    this._theme = v;
+    eventBus.emit('state:themeChanged', v);
+    this._saveSettings();
   }
   set project(v) {
     this._project = v;
@@ -182,6 +198,8 @@ class AppState {
       const s = {
         operationMode: this._operationMode,
         busType: this._busType,
+        locale: this._locale,
+        theme: this._theme,
         csvExportEnabled: this._csvExportEnabled,
         points: this._points,
         serialConfig: this._serialConfig,
@@ -200,6 +218,8 @@ class AppState {
       const s = JSON.parse(raw);
       if (s.operationMode) this._operationMode = s.operationMode;
       if (s.busType) this._busType = s.busType;
+      if (s.locale) this._locale = s.locale;
+      if (s.theme) this._theme = s.theme;
       if (s.csvExportEnabled !== undefined) this._csvExportEnabled = s.csvExportEnabled;
       if (s.points) this._points = s.points;
       if (s.serialConfig) Object.assign(this._serialConfig, s.serialConfig);
