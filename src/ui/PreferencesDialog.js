@@ -3,7 +3,8 @@
  */
 import { eventBus } from '../core/EventBus.js';
 import { appState } from '../core/AppState.js';
-import { applyTheme, t } from '../core/i18n.js';
+import { applyTheme, t } from '../core/i18n.js?v=csv-autosave-20260424-1';
+import { csvSessionManager } from '../core/CsvSessionManager.js';
 
 export class PreferencesDialog {
   constructor(modalRoot) {
@@ -121,6 +122,8 @@ export class PreferencesDialog {
                 <input type="checkbox" id="pref-console-log" ${appState.consoleExportEnabled ? 'checked' : ''}>
                 <span>${t('preferences.exportConsoleLog')}</span>
               </label>
+              <button class="btn" id="pref-csv-path">${t('preferences.chooseCsvPath')}</button>
+              <div style="font-size:12px;color:var(--text-muted)" id="pref-csv-target">${csvSessionManager.targetSummary}</div>
             </div>
           </div>
 
@@ -149,6 +152,19 @@ export class PreferencesDialog {
 
     this._el.addEventListener('click', (e) => { if (e.target === this._el) this.close(); });
     this._el.querySelector('#pref-close').addEventListener('click', () => this.close());
+    this._el.querySelector('#pref-csv-path')?.addEventListener('click', async () => {
+      try {
+        const changed = await csvSessionManager.pickSaveDirectory();
+        if (changed) {
+          const target = this._el?.querySelector('#pref-csv-target');
+          if (target) target.textContent = csvSessionManager.targetSummary;
+        }
+      } catch (error) {
+        if (error?.name !== 'AbortError') {
+          eventBus.emit('toast', { type: 'error', message: t('messages.csvSaveFailed', { error: error.message || error }) });
+        }
+      }
+    });
 
     this._el.querySelector('#pref-reset').addEventListener('click', () => {
       appState.points = 100;

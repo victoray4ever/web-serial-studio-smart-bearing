@@ -155,6 +155,12 @@
   white-space: nowrap;
   font-size: var(--font-size-base);
 }
+.sidebar-helper-text {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  line-height: 1.5;
+  padding: 0 2px;
+}
 
 /* ── Connection Status ── */
 .sidebar-status {
