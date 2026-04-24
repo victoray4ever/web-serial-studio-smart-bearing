@@ -23,6 +23,10 @@ export class PlotWidget extends WidgetBase {
     };
   }
 
+  _readThemeToken(styles, name, fallback = '') {
+    return styles.getPropertyValue(name).trim() || fallback;
+  }
+
   _render(body) {
     body.style.padding = '8px';
     const canvas = document.createElement('canvas');
@@ -33,6 +37,12 @@ export class PlotWidget extends WidgetBase {
     const themeStyles = getComputedStyle(document.documentElement);
     const colors = this._datasetIndices.map((_, i) => getDatasetColor(this.config.colorOffset + i || i));
     const alphas = this._datasetIndices.map((_, i) => getDatasetColorAlpha(this.config.colorOffset + i || i, 0.15));
+    const legendColor = this._readThemeToken(themeStyles, '--chart-legend-text', '#cbd5e1');
+    const tickColor = this._readThemeToken(themeStyles, '--chart-tick', '#7b8ba1');
+    const axisColor = this._readThemeToken(themeStyles, '--chart-axis', 'rgba(148,163,184,0.14)');
+    const majorGridColor = this._readThemeToken(themeStyles, '--chart-grid-major', 'rgba(148,163,184,0.08)');
+    const lineWidth = Number.parseFloat(this._readThemeToken(themeStyles, '--chart-line-width', '2.2')) || 2.2;
+    const crosshairColor = this._readThemeToken(themeStyles, '--chart-crosshair', 'rgba(59,130,246,0.18)');
 
     this._chart = new Chart(canvas, {
       type: 'line',
@@ -43,9 +53,12 @@ export class PlotWidget extends WidgetBase {
           data: this._data[i],
           borderColor: colors[i],
           backgroundColor: alphas[i],
-          borderWidth: 1.5,
+          borderWidth: this._datasetIndices.length === 1 ? lineWidth + 0.2 : lineWidth,
           pointRadius: 0,
-          tension: 0.3,
+          pointHoverRadius: 3,
+          pointHitRadius: 10,
+          pointHoverBorderWidth: 0,
+          tension: 0.22,
           fill: this._datasetIndices.length === 1
         }))
       },
@@ -54,13 +67,24 @@ export class PlotWidget extends WidgetBase {
         maintainAspectRatio: false,
         animation: false,
         interaction: { mode: 'index', intersect: false },
+        elements: {
+          line: {
+            borderCapStyle: 'round',
+            borderJoinStyle: 'round'
+          }
+        },
         plugins: {
           legend: {
             display: this._datasetIndices.length > 1,
             labels: {
-              color: themeStyles.getPropertyValue('--text-secondary').trim() || '#94a3b8',
-              font: { size: 10 },
-              boxWidth: 12
+              color: legendColor,
+              font: { size: 11, family: "'Inter', sans-serif", weight: '600' },
+              usePointStyle: true,
+              pointStyle: 'line',
+              pointStyleWidth: 30,
+              boxWidth: 28,
+              boxHeight: 5,
+              padding: 14
             }
           },
           tooltip: {
@@ -69,7 +93,12 @@ export class PlotWidget extends WidgetBase {
             borderWidth: 1,
             titleColor: themeStyles.getPropertyValue('--chart-tooltip-title').trim() || '#94a3b8',
             bodyColor: themeStyles.getPropertyValue('--chart-tooltip-body').trim() || '#f1f5f9',
-            bodyFont: { family: "'JetBrains Mono', monospace", size: 11 }
+            titleFont: { family: "'Inter', sans-serif", size: 11, weight: '600' },
+            bodyFont: { family: "'JetBrains Mono', monospace", size: 11 },
+            cornerRadius: 10,
+            padding: 10,
+            boxPadding: 4,
+            displayColors: true
           },
           zoom: {
             pan: {
@@ -80,7 +109,7 @@ export class PlotWidget extends WidgetBase {
             zoom: {
               wheel: { enabled: true, modifierKey: 'ctrl' },
               pinch: { enabled: true },
-              drag: { enabled: true, backgroundColor: 'rgba(59,130,246,0.2)' },
+              drag: { enabled: true, backgroundColor: crosshairColor },
               mode: 'x'
             },
             onZoomComplete: this._syncVisibleYScale,
@@ -90,17 +119,27 @@ export class PlotWidget extends WidgetBase {
         scales: {
           x: {
             display: false,
-            grid: { color: themeStyles.getPropertyValue('--dashboard-grid-line').trim() || 'rgba(148,163,184,0.05)' }
+            grid: {
+              color: majorGridColor,
+              drawTicks: false,
+              borderColor: axisColor
+            }
           },
           y: {
             beginAtZero: false,
-            grid: { color: themeStyles.getPropertyValue('--dashboard-grid-line').trim() || 'rgba(148,163,184,0.06)' },
-            ticks: {
-              color: themeStyles.getPropertyValue('--text-muted').trim() || '#64748b',
-              font: { size: 10, family: "'JetBrains Mono', monospace" },
-              maxTicksLimit: 5
+            grid: {
+              color: majorGridColor,
+              drawTicks: false,
+              lineWidth: 1,
+              borderColor: axisColor
             },
-            border: { color: themeStyles.getPropertyValue('--border-default').trim() || 'rgba(148,163,184,0.1)' }
+            ticks: {
+              color: tickColor,
+              font: { size: 11, family: "'JetBrains Mono', monospace", weight: '500' },
+              maxTicksLimit: 6,
+              padding: 8
+            },
+            border: { color: axisColor, width: 1 }
           }
         }
       }

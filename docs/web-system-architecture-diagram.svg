@@ -1,0 +1,178 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1600" y2="900" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F5FAFF"/>
+      <stop offset="1" stop-color="#E6F0FF"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F5F9FF"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#3B82F6"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#10B981"/>
+      <stop offset="1" stop-color="#059669"/>
+    </linearGradient>
+    <linearGradient id="cyan" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#06B6D4"/>
+      <stop offset="1" stop-color="#0891B2"/>
+    </linearGradient>
+    <linearGradient id="amber" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#F59E0B"/>
+      <stop offset="1" stop-color="#D97706"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="18" flood-color="#0F172A" flood-opacity="0.14"/>
+    </filter>
+    <marker id="arrow" markerWidth="14" markerHeight="14" refX="11" refY="7" orient="auto">
+      <path d="M0 0L14 7L0 14V0Z" fill="#38BDF8"/>
+    </marker>
+    <style>
+      .title { font: 700 31px 'Microsoft YaHei', 'PingFang SC', sans-serif; fill: #0F172A; }
+      .subtitle { font: 600 15px 'Microsoft YaHei', 'PingFang SC', sans-serif; fill: #2563EB; letter-spacing: 1px; }
+      .section-title { font: 700 22px 'Microsoft YaHei', 'PingFang SC', sans-serif; fill: #0F172A; }
+      .section-note { font: 400 14px 'Microsoft YaHei', 'PingFang SC', sans-serif; fill: #64748B; }
+      .box-title { font: 700 17px 'Microsoft YaHei', 'PingFang SC', sans-serif; fill: #0F172A; }
+      .box-text { font: 400 14px 'Microsoft YaHei', 'PingFang SC', sans-serif; fill: #334155; }
+      .tag-text { font: 700 14px 'Microsoft YaHei', 'PingFang SC', sans-serif; fill: #FFFFFF; }
+      .mini { font: 400 13px 'Microsoft YaHei', 'PingFang SC', sans-serif; fill: #64748B; }
+      .legend { font: 500 13px 'Microsoft YaHei', 'PingFang SC', sans-serif; fill: #475569; }
+      .flow { stroke: #38BDF8; stroke-width: 4; fill: none; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect width="1600" height="900" rx="28" fill="url(#bg)"/>
+
+  <text x="56" y="60" class="title">Web Serial Studio 平台总体架构图</text>
+  <text x="56" y="88" class="subtitle">WEB SERIAL STUDIO PLATFORM ARCHITECTURE</text>
+
+  <rect x="40" y="126" width="280" height="640" rx="24" fill="url(#card)" stroke="#C7D8F0" stroke-width="2" filter="url(#shadow)"/>
+  <text x="180" y="168" class="section-title" text-anchor="middle">1. 数据输入层</text>
+  <text x="180" y="194" class="section-note" text-anchor="middle">设备、网络端点、项目文件与演示数据</text>
+
+  <rect x="64" y="220" width="232" height="90" rx="18" fill="#E0F2FE" stroke="#38BDF8"/>
+  <text x="180" y="252" class="box-title" text-anchor="middle">串口 / 传感设备</text>
+  <text x="180" y="278" class="box-text" text-anchor="middle">MCU、USB 转串口、实验采集终端</text>
+  <text x="180" y="300" class="mini" text-anchor="middle">适合本地调试与实验采集</text>
+
+  <rect x="64" y="332" width="232" height="90" rx="18" fill="#DCFCE7" stroke="#10B981"/>
+  <text x="180" y="364" class="box-title" text-anchor="middle">WebSocket / MQTT</text>
+  <text x="180" y="390" class="box-text" text-anchor="middle">Broker、Topic、WS / WSS 端点</text>
+  <text x="180" y="412" class="mini" text-anchor="middle">适合远程转发与在线监测</text>
+
+  <rect x="64" y="444" width="232" height="90" rx="18" fill="#EEF2FF" stroke="#6366F1"/>
+  <text x="180" y="476" class="box-title" text-anchor="middle">项目文件</text>
+  <text x="180" y="502" class="box-text" text-anchor="middle">JSON 布局、量程、标题与索引</text>
+  <text x="180" y="524" class="mini" text-anchor="middle">驱动仪表盘快速装配</text>
+
+  <rect x="64" y="556" width="232" height="90" rx="18" fill="#FEF3C7" stroke="#F59E0B"/>
+  <text x="180" y="588" class="box-title" text-anchor="middle">Demo Simulator</text>
+  <text x="180" y="614" class="box-text" text-anchor="middle">内置演示数据与无硬件联调</text>
+  <text x="180" y="636" class="mini" text-anchor="middle">便于界面验证与文档截图</text>
+
+  <rect x="360" y="126" width="260" height="640" rx="24" fill="url(#card)" stroke="#C7D8F0" stroke-width="2" filter="url(#shadow)"/>
+  <text x="490" y="168" class="section-title" text-anchor="middle">2. 接入管理层</text>
+  <text x="490" y="194" class="section-note" text-anchor="middle">统一建立连接并路由原始数据</text>
+
+  <rect x="384" y="226" width="212" height="74" rx="18" fill="url(#blue)"/>
+  <text x="490" y="270" class="tag-text" text-anchor="middle">ConnectionManager</text>
+
+  <rect x="384" y="328" width="212" height="62" rx="16" fill="#DBEAFE" stroke="#60A5FA"/>
+  <text x="490" y="365" class="box-title" text-anchor="middle">SerialDriver</text>
+
+  <rect x="384" y="408" width="212" height="62" rx="16" fill="#DBEAFE" stroke="#60A5FA"/>
+  <text x="490" y="445" class="box-title" text-anchor="middle">WebSocketDriver</text>
+
+  <rect x="384" y="488" width="212" height="62" rx="16" fill="#DBEAFE" stroke="#60A5FA"/>
+  <text x="490" y="525" class="box-title" text-anchor="middle">MqttDriver</text>
+
+  <rect x="384" y="580" width="212" height="92" rx="18" fill="#ECFEFF" stroke="#06B6D4"/>
+  <text x="490" y="614" class="box-title" text-anchor="middle">浏览器接入约束</text>
+  <text x="490" y="640" class="box-text" text-anchor="middle">MQTT 必须使用 WS / WSS</text>
+  <text x="490" y="662" class="mini" text-anchor="middle">Bluetooth 入口已预留，驱动尚未接入</text>
+
+  <rect x="660" y="126" width="280" height="640" rx="24" fill="url(#card)" stroke="#C7D8F0" stroke-width="2" filter="url(#shadow)"/>
+  <text x="800" y="168" class="section-title" text-anchor="middle">3. 状态与解析层</text>
+  <text x="800" y="194" class="section-note" text-anchor="middle">状态持久化、事件分发、项目建模与协议解析</text>
+
+  <rect x="684" y="226" width="232" height="62" rx="16" fill="#E0F2FE" stroke="#38BDF8"/>
+  <text x="800" y="263" class="box-title" text-anchor="middle">AppState</text>
+
+  <rect x="684" y="306" width="232" height="62" rx="16" fill="#DCFCE7" stroke="#22C55E"/>
+  <text x="800" y="343" class="box-title" text-anchor="middle">EventBus</text>
+
+  <rect x="684" y="386" width="232" height="62" rx="16" fill="#F3E8FF" stroke="#A855F7"/>
+  <text x="800" y="423" class="box-title" text-anchor="middle">ProjectModel</text>
+
+  <rect x="684" y="484" width="232" height="120" rx="18" fill="#EFF6FF" stroke="#2563EB"/>
+  <text x="800" y="518" class="box-title" text-anchor="middle">FrameParser</text>
+  <text x="800" y="546" class="box-text" text-anchor="middle">Quick Plot / Device Sends JSON</text>
+  <text x="800" y="572" class="box-text" text-anchor="middle">Project File / STM32 Binary</text>
+  <text x="800" y="596" class="mini" text-anchor="middle">支持 CSV、JSON 与 STM32 专用二进制帧</text>
+
+  <rect x="684" y="626" width="232" height="92" rx="18" fill="#FEFCE8" stroke="#EAB308"/>
+  <text x="800" y="660" class="box-title" text-anchor="middle">CsvSessionManager</text>
+  <text x="800" y="686" class="box-text" text-anchor="middle">自动保存、手动导出与下载回退</text>
+  <text x="800" y="708" class="mini" text-anchor="middle">按连接会话组织 CSV 数据</text>
+
+  <rect x="980" y="126" width="300" height="640" rx="24" fill="url(#card)" stroke="#C7D8F0" stroke-width="2" filter="url(#shadow)"/>
+  <text x="1130" y="168" class="section-title" text-anchor="middle">4. 界面与交互层</text>
+  <text x="1130" y="194" class="section-note" text-anchor="middle">动态构建 UI 并展示实时数据</text>
+
+  <rect x="1004" y="226" width="252" height="74" rx="18" fill="url(#green)"/>
+  <text x="1130" y="270" class="tag-text" text-anchor="middle">Dashboard</text>
+
+  <rect x="1004" y="328" width="252" height="70" rx="16" fill="#E0F2FE" stroke="#60A5FA"/>
+  <text x="1130" y="360" class="box-title" text-anchor="middle">Toolbar / Sidebar</text>
+  <text x="1130" y="384" class="mini" text-anchor="middle">项目操作、接口切换、协议配置</text>
+
+  <rect x="1004" y="420" width="252" height="70" rx="16" fill="#E0F2FE" stroke="#60A5FA"/>
+  <text x="1130" y="452" class="box-title" text-anchor="middle">Console / Taskbar</text>
+  <text x="1130" y="476" class="mini" text-anchor="middle">工作区切换、日志查看、状态提示</text>
+
+  <rect x="1004" y="518" width="252" height="80" rx="16" fill="#F3E8FF" stroke="#A855F7"/>
+  <text x="1130" y="552" class="box-title" text-anchor="middle">Preferences / Project Editor</text>
+  <text x="1130" y="578" class="mini" text-anchor="middle">主题、语言、CSV 与项目结构编辑</text>
+
+  <rect x="1004" y="618" width="252" height="116" rx="18" fill="#FEF3C7" stroke="#F59E0B"/>
+  <text x="1130" y="652" class="box-title" text-anchor="middle">Widgets / Charts</text>
+  <text x="1130" y="680" class="box-text" text-anchor="middle">Plot、Gauge、Bar、Compass</text>
+  <text x="1130" y="704" class="box-text" text-anchor="middle">DataGrid、Accel 与自适应布局</text>
+  <text x="1130" y="726" class="mini" text-anchor="middle">支持缩放、滚动与纵轴重算</text>
+
+  <rect x="1320" y="126" width="240" height="640" rx="24" fill="url(#card)" stroke="#C7D8F0" stroke-width="2" filter="url(#shadow)"/>
+  <text x="1440" y="168" class="section-title" text-anchor="middle">5. 部署与访问层</text>
+  <text x="1440" y="194" class="section-note" text-anchor="middle">本地运行、版本协作与静态发布</text>
+
+  <rect x="1344" y="226" width="192" height="96" rx="18" fill="#EFF6FF" stroke="#2563EB"/>
+  <text x="1440" y="260" class="box-title" text-anchor="middle">本地运行</text>
+  <text x="1440" y="290" class="box-text" text-anchor="middle">python -m http.server 8000</text>
+  <text x="1440" y="314" class="mini" text-anchor="middle">浏览器访问 localhost:8000</text>
+
+  <rect x="1344" y="350" width="192" height="96" rx="18" fill="#DCFCE7" stroke="#10B981"/>
+  <text x="1440" y="384" class="box-title" text-anchor="middle">GitHub 协作</text>
+  <text x="1440" y="414" class="box-text" text-anchor="middle">分支开发、PR 审查与合并</text>
+  <text x="1440" y="438" class="mini" text-anchor="middle">适合课程、实验与团队迭代</text>
+
+  <rect x="1344" y="474" width="192" height="96" rx="18" fill="#ECFEFF" stroke="#06B6D4"/>
+  <text x="1440" y="508" class="box-title" text-anchor="middle">Actions + Pages</text>
+  <text x="1440" y="538" class="box-text" text-anchor="middle">自动部署静态站点</text>
+  <text x="1440" y="562" class="mini" text-anchor="middle">面向在线演示与共享访问</text>
+
+  <rect x="1344" y="598" width="192" height="96" rx="18" fill="#FEF3C7" stroke="#F59E0B"/>
+  <text x="1440" y="632" class="box-title" text-anchor="middle">最终用户</text>
+  <text x="1440" y="662" class="box-text" text-anchor="middle">通过浏览器查看监测数据</text>
+  <text x="1440" y="686" class="mini" text-anchor="middle">无需后端即可直接使用</text>
+
+  <path d="M320 446H360" class="flow"/>
+  <path d="M620 446H660" class="flow"/>
+  <path d="M940 446H980" class="flow"/>
+  <path d="M1280 446H1320" class="flow"/>
+
+  <rect x="40" y="802" width="1520" height="58" rx="18" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <text x="800" y="836" class="legend" text-anchor="middle">主流程：数据源与项目配置 → ConnectionManager / Drivers → AppState、EventBus、ProjectModel、FrameParser → Dashboard / Console / Widgets → 本地运行与 GitHub Pages 发布</text>
+  <text x="800" y="858" class="mini" text-anchor="middle">关键文件：src/main.js、src/core/AppState.js、src/core/FrameParser.js、src/core/CsvSessionManager.js、src/ui/PreferencesDialog.js、src/ui/ProjectEditorDialog.js、projects/stm32-bearing.json</text>
+</svg>

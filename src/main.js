@@ -3,15 +3,17 @@
  */
 import { eventBus } from './core/EventBus.js';
 import { appState } from './core/AppState.js';
-import { applyTheme, modeLabel, t } from './core/i18n.js';
+import { applyTheme, modeLabel, t } from './core/i18n.js?v=csv-autosave-20260424-1';
 import { ConnectionManager } from './io/ConnectionManager.js?v=ui-fix-20260424-1';
 import { DataSimulator } from './io/DataSimulator.js?v=ui-fix-20260424-1';
-import { Toolbar } from './ui/Toolbar.js?v=ui-fix-20260424-1';
-import { Sidebar } from './ui/Sidebar.js?v=ui-fix-20260424-1';
+import { Toolbar } from './ui/Toolbar.js?v=csv-autosave-20260424-1';
+import { Sidebar } from './ui/Sidebar.js?v=csv-autosave-20260424-1';
 import { Dashboard } from './ui/Dashboard.js?v=ui-fix-20260424-1';
 import { Console } from './ui/Console.js?v=ui-fix-20260424-1';
 import { ProjectModel } from './core/ProjectModel.js?v=ui-fix-20260424-1';
-import { PreferencesDialog } from './ui/PreferencesDialog.js?v=ui-fix-20260424-1';
+import { PreferencesDialog } from './ui/PreferencesDialog.js?v=csv-autosave-20260424-1';
+import { ProjectEditorDialog } from './ui/ProjectEditorDialog.js?v=editor-fix-20260424-1';
+import { runDocCaptureScenario } from './utils/docCapture.js?v=doc-capture-20260424-1';
 
 class App {
   constructor() {
@@ -23,6 +25,7 @@ class App {
     this._dashboard = null;
     this._console = null;
     this._prefs = null;
+    this._projectEditor = null;
     this._init();
   }
 
@@ -48,9 +51,39 @@ class App {
     this._dashboard = new Dashboard(document.getElementById('dashboard-area'));
     this._console = new Console(document.getElementById('console-area'), this._conn);
     this._prefs = new PreferencesDialog(document.getElementById('modal-root'));
+    this._projectEditor = new ProjectEditorDialog(document.getElementById('modal-root'), this._project, {
+      onApply: (project) => {
+        this._applyProject(project, { mode: 'ProjectFile' });
+      }
+    });
 
     this._renderTaskbar();
     this._bindGlobalEvents();
+    runDocCaptureScenario().catch((error) => {
+      console.error('Doc capture setup failed:', error);
+    });
+  }
+
+  _applyProject(source, { mode = 'ProjectFile', toastMessage = '' } = {}) {
+    if (!this._project.loadFromJSON(source)) {
+      throw new Error(t('messages.failedParseProject'));
+    }
+
+    const project = this._project.project;
+    this._dashboard.buildFromProject(project);
+
+    appState.project = project;
+    appState.projectFileName = project.title || '';
+    appState.operationMode = project.protocol === 'STM32Binary' ? 'STM32Binary' : mode;
+
+    const tbProject = document.getElementById('tb-project');
+    if (tbProject) tbProject.textContent = this._project.title;
+
+    if (toastMessage) {
+      eventBus.emit('toast', { type: 'success', message: toastMessage });
+    }
+
+    return project;
   }
 
   _renderTaskbar() {
@@ -84,18 +117,29 @@ class App {
 
     el.querySelectorAll('.taskbar-tab').forEach((tab) => {
       tab.addEventListener('click', () => {
-        el.querySelectorAll('.taskbar-tab').forEach((node) => node.classList.remove('active'));
-        tab.classList.add('active');
-        const ws = tab.dataset.ws;
-        const dashboardArea = document.getElementById('dashboard-area');
-        const consoleArea = document.getElementById('console-area');
-        dashboardArea.style.display = ws === 'dashboard' ? 'flex' : 'none';
-        dashboardArea.style.flexDirection = 'column';
-        consoleArea.style.display = ws === 'console' ? 'flex' : 'none';
-        consoleArea.style.flexDirection = ws === 'console' ? 'column' : 'none';
-        appState.currentWorkspace = ws;
+        this._setWorkspace(tab.dataset.ws);
       });
     });
+  }
+
+  _setWorkspace(ws) {
+    const el = document.getElementById('taskbar-root');
+    el?.querySelectorAll('.taskbar-tab').forEach((node) => {
+      node.classList.toggle('active', node.dataset.ws === ws);
+    });
+
+    const dashboardArea = document.getElementById('dashboard-area');
+    const consoleArea = document.getElementById('console-area');
+    if (dashboardArea) {
+      dashboardArea.style.display = ws === 'dashboard' ? 'flex' : 'none';
+      dashboardArea.style.flexDirection = 'column';
+    }
+    if (consoleArea) {
+      consoleArea.style.display = ws === 'console' ? 'flex' : 'none';
+      consoleArea.style.flexDirection = ws === 'console' ? 'column' : 'none';
+    }
+
+    appState.currentWorkspace = ws;
   }
 
   _bindGlobalEvents() {
@@ -109,6 +153,12 @@ class App {
 
     eventBus.on('ui:startSimulator', () => {
       this._sim?.toggle?.();
+    });
+
+    eventBus.on('ui:switchWorkspace', (ws) => {
+      if (ws === 'dashboard' || ws === 'console') {
+        this._setWorkspace(ws);
+      }
     });
 
     eventBus.on('project:openFile', () => {
@@ -126,19 +176,10 @@ class App {
     });
 
     eventBus.on('project:load', (jsonStr) => {
-      if (this._project.loadFromJSON(jsonStr)) {
-        this._dashboard.buildFromProject(this._project.project);
-
-        if (this._project.project.protocol === 'STM32Binary') {
-          appState.operationMode = 'STM32Binary';
-        } else {
-          appState.operationMode = 'ProjectFile';
-        }
-
-        const tbProject = document.getElementById('tb-project');
-        if (tbProject) tbProject.textContent = this._project.title;
-        eventBus.emit('toast', { type: 'success', message: t('messages.loaded', { title: this._project.title }) });
-      } else {
+      try {
+        const project = this._applyProject(jsonStr, { mode: 'ProjectFile' });
+        eventBus.emit('toast', { type: 'success', message: t('messages.loaded', { title: project.title }) });
+      } catch (error) {
         eventBus.emit('toast', { type: 'error', message: t('messages.failedParseProject') });
       }
     });
@@ -179,10 +220,7 @@ class App {
         groups
       };
 
-      this._dashboard.buildFromProject(project);
-      const tbProject = document.getElementById('tb-project');
-      if (tbProject) tbProject.textContent = project.title;
-      eventBus.emit('toast', { type: 'success', message: t('messages.jsonApplied') });
+      this._applyProject(project, { mode: 'DeviceSendsJSON', toastMessage: t('messages.jsonApplied') });
     });
 
     eventBus.on('state:themeChanged', () => {

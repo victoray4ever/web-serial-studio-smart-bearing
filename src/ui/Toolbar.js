@@ -3,33 +3,20 @@
  */
 import { eventBus } from '../core/EventBus.js';
 import { appState, BusType } from '../core/AppState.js';
-import { t } from '../core/i18n.js';
-import { CSVExporter } from '../utils/helpers.js';
+import { t } from '../core/i18n.js?v=csv-autosave-20260424-1';
+import { csvSessionManager } from '../core/CsvSessionManager.js';
 
 export class Toolbar {
   constructor(container, connectionManager, simulator) {
     this._container = container;
     this._conn = connectionManager;
     this._sim = simulator;
-    this._csvExporter = new CSVExporter();
     this._rateEl = null;
     this._countEl = null;
     this._render();
     this._bindDomEvents();
     eventBus.on('state:connectionStateChanged', () => this._updateConnectBtn());
     setInterval(() => this._updateStats(), 1000);
-    eventBus.on('frame:received', (frame) => {
-      if (appState.csvExportEnabled && frame.datasets) {
-        if (!this._csvExporter.isRecording) {
-          const headers = frame.datasets.map((d) => d.title || `Ch${d.index + 1}`);
-          this._csvExporter.start(headers);
-        }
-        this._csvExporter.addRow(frame.datasets.map((d) => d.value));
-      }
-    });
-    eventBus.on('state:connectionStateChanged', (state) => {
-      if (state === 'Disconnected') this._csvExporter.stop();
-    });
   }
 
   _render() {
@@ -181,9 +168,8 @@ export class Toolbar {
     });
 
     this._container.querySelector('#btn-save-project').addEventListener('click', () => eventBus.emit('project:save'));
-    this._container.querySelector('#btn-export-csv').addEventListener('click', () => {
-      this._csvExporter.download('serial-studio');
-      eventBus.emit('toast', { type: 'success', message: t('messages.csvExported') });
+    this._container.querySelector('#btn-export-csv').addEventListener('click', async () => {
+      await csvSessionManager.exportLatest({ promptIfNeeded: true });
     });
     this._container.querySelector('#btn-preferences').addEventListener('click', () => eventBus.emit('ui:openPreferences'));
     this._container.querySelector('#btn-project-editor').addEventListener('click', () => eventBus.emit('ui:openEditor'));

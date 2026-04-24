@@ -3,7 +3,8 @@
  */
 import { eventBus } from '../core/EventBus.js';
 import { appState, OperationMode, BusType, ConnectionState } from '../core/AppState.js';
-import { busLabel, t } from '../core/i18n.js';
+import { busLabel, t } from '../core/i18n.js?v=csv-autosave-20260424-1';
+import { csvSessionManager } from '../core/CsvSessionManager.js';
 
 export class Sidebar {
   constructor(container) {
@@ -16,6 +17,7 @@ export class Sidebar {
     eventBus.on('state:busTypeChanged', () => this._updateDriverPanel());
     eventBus.on('state:connectionStateChanged', () => this._updateStatusDot());
     eventBus.on('state:operationModeChanged', () => this._updateDriverPanel());
+    eventBus.on('csv:targetChanged', () => this._updateCsvTargetHint());
     eventBus.on('frame:receivedJSON', (json) => {
       this._lastReceivedJSON = JSON.stringify(json).slice(0, 200);
       const lastEl = this._container.querySelector('#json-last-received');
@@ -62,6 +64,8 @@ export class Sidebar {
                 <input type="checkbox" id="chk-console-log" ${appState.consoleExportEnabled ? 'checked' : ''}>
                 <span>${t('sidebar.exportConsole')}</span>
               </label>
+              <button class="btn" id="btn-csv-path">${t('sidebar.chooseCsvPath')}</button>
+              <div class="sidebar-helper-text" id="csv-target-hint">${csvSessionManager.targetSummary}</div>
             </div>
           </div>
 
@@ -155,6 +159,18 @@ export class Sidebar {
     if (csvChk) csvChk.addEventListener('change', () => { appState.csvExportEnabled = csvChk.checked; });
     const conChk = this._container.querySelector('#chk-console-log');
     if (conChk) conChk.addEventListener('change', () => { appState.consoleExportEnabled = conChk.checked; });
+    const csvPathBtn = this._container.querySelector('#btn-csv-path');
+    if (csvPathBtn) {
+      csvPathBtn.addEventListener('click', async () => {
+        try {
+          await csvSessionManager.pickSaveDirectory();
+        } catch (error) {
+          if (error?.name !== 'AbortError') {
+            eventBus.emit('toast', { type: 'error', message: t('messages.csvSaveFailed', { error: error.message || error }) });
+          }
+        }
+      });
+    }
 
     this._container.querySelectorAll('.bus-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -174,6 +190,12 @@ export class Sidebar {
 
     this._bindJsonEditor();
     this._toggleJsonEditor(appState.operationMode);
+    this._updateCsvTargetHint();
+  }
+
+  _updateCsvTargetHint() {
+    const el = this._container.querySelector('#csv-target-hint');
+    if (el) el.textContent = csvSessionManager.targetSummary;
   }
 
   _toggleJsonEditor(mode) {
