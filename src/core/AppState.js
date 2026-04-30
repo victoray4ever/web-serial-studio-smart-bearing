@@ -81,6 +81,7 @@ class AppState {
 
     // Frame config
     this._frameConfig = {
+      separator: ',',
       startDelimiter: '',
       endDelimiter: '\\n',
       frameDetection: 'EndDelimiterOnly'

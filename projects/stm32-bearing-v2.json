@@ -1,0 +1,143 @@
+{
+  "title": "STM32 Bearing Monitoring System V2",
+  "protocol": "STM32BinaryV2",
+  "separator": ",",
+  "frameStart": "5A A5",
+  "frameEnd": "DD EE",
+  "frameDetection": "StartAndEndDelimiter",
+  "hexadecimalDelimiters": true,
+  "pointCount": 1,
+  "actions": [],
+  "groups": [
+    {
+      "title": "Strain Sensors (ADS124S08)",
+      "widget": "MultiPlot",
+      "datasets": [
+        {
+          "title": "Strain 1",
+          "index": 0,
+          "units": "",
+          "plotMin": -0.02,
+          "plotMax": 0.02,
+          "widgetMin": -0.02,
+          "widgetMax": 0.02,
+          "fftMin": -0.02,
+          "fftMax": 0.02,
+          "fft": false,
+          "graph": true,
+          "log": false,
+          "alarmEnabled": false,
+          "alarmLow": -0.02,
+          "alarmHigh": 0.02,
+          "led": false,
+          "ledHigh": 0,
+          "overviewDisplay": true,
+          "value": "--.--",
+          "widget": "",
+          "xAxis": -1
+        },
+        {
+          "title": "Strain 2",
+          "index": 1,
+          "units": "",
+          "plotMin": -0.02,
+          "plotMax": 0.02,
+          "widgetMin": -0.02,
+          "widgetMax": 0.02,
+          "fftMin": -0.02,
+          "fftMax": 0.02,
+          "fft": false,
+          "graph": true,
+          "log": false,
+          "alarmEnabled": false,
+          "alarmLow": -0.02,
+          "alarmHigh": 0.02,
+          "led": false,
+          "ledHigh": 0,
+          "overviewDisplay": true,
+          "value": "--.--",
+          "widget": "",
+          "xAxis": -1
+        },
+        {
+          "title": "Strain 3",
+          "index": 2,
+          "units": "",
+          "plotMin": -0.02,
+          "plotMax": 0.02,
+          "widgetMin": -0.02,
+          "widgetMax": 0.02,
+          "fftMin": -0.02,
+          "fftMax": 0.02,
+          "fft": false,
+          "graph": true,
+          "log": false,
+          "alarmEnabled": false,
+          "alarmLow": -0.02,
+          "alarmHigh": 0.02,
+          "led": false,
+          "ledHigh": 0,
+          "overviewDisplay": true,
+          "value": "--.--",
+          "widget": "",
+          "xAxis": -1
+        }
+      ]
+    },
+    {
+      "title": "Temperature",
+      "widget": "Gauges",
+      "datasets": [
+        {
+          "title": "Temperature",
+          "index": 3,
+          "units": "C",
+          "plotMin": -50,
+          "plotMax": 150,
+          "widgetMin": -50,
+          "widgetMax": 150,
+          "fftMin": -50,
+          "fftMax": 150,
+          "fft": false,
+          "graph": false,
+          "log": false,
+          "alarmEnabled": false,
+          "alarmLow": -50,
+          "alarmHigh": 150,
+          "led": false,
+          "ledHigh": 0,
+          "overviewDisplay": true,
+          "value": "--.--",
+          "widget": "",
+          "xAxis": -1
+        }
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "title": "Device A V2",
+      "sourceId": 0,
+      "busType": 0,
+      "decoder": 0,
+      "decoderMethod": 0,
+      "frameDetection": 2,
+      "frameStart": "5A A5",
+      "frameEnd": "DD EE",
+      "hexadecimalDelimiters": true,
+      "checksum": "",
+      "checksumAlgorithm": "",
+      "frameParserCode": "function parse(frame) {\n  // Web Serial Studio uses the built-in STM32BinaryV2 parser for this project.\n  return frame;\n}\n",
+      "connection": {
+        "autoReconnect": false,
+        "baudRate": 15,
+        "dataBitsIndex": 3,
+        "dtr": true,
+        "flowControlIndex": 0,
+        "parityIndex": 0,
+        "portIndex": 0,
+        "stopBitsIndex": 0
+      }
+    }
+  ]
+}

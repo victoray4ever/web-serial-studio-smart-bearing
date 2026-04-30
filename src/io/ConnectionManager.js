@@ -4,7 +4,7 @@
 import { eventBus } from '../core/EventBus.js';
 import { appState, BusType, ConnectionState } from '../core/AppState.js';
 import { busLabel, t } from '../core/i18n.js';
-import { FrameParser } from '../core/FrameParser.js?v=accel-fix-20260423-2';
+import { FrameParser } from '../core/FrameParser.js?v=protocol-plugin-20260427-1';
 import { SerialDriver } from './SerialDriver.js';
 import { WebSocketDriver } from './WebSocketDriver.js';
 import { MqttDriver } from './MqttDriver.js';
@@ -40,6 +40,7 @@ export class ConnectionManager {
         return;
       }
 
+      this._parser.startStats();
       this._driver.on('data', this._connectHandler);
       this._driver.on('error', (err) => {
         console.error('Driver error:', err);
@@ -55,6 +56,7 @@ export class ConnectionManager {
 
     } catch (err) {
       console.error('Connection failed:', err);
+      this._parser.stopStats();
       appState.connectionState = ConnectionState.Error;
       setTimeout(() => {
         appState.connectionState = ConnectionState.Disconnected;
@@ -73,6 +75,7 @@ export class ConnectionManager {
     } catch (e) {
       console.warn('Disconnect error:', e);
     }
+    this._parser.stopStats();
     appState.connectionState = ConnectionState.Disconnected;
     eventBus.emit('toast', { type: 'info', message: t('messages.disconnected') });
   }

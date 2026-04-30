@@ -4,8 +4,8 @@
 import { eventBus } from './core/EventBus.js';
 import { appState } from './core/AppState.js';
 import { applyTheme, modeLabel, t } from './core/i18n.js?v=csv-autosave-20260424-1';
-import { ConnectionManager } from './io/ConnectionManager.js?v=ui-fix-20260424-1';
-import { DataSimulator } from './io/DataSimulator.js?v=ui-fix-20260424-1';
+import { ConnectionManager } from './io/ConnectionManager.js?v=protocol-plugin-20260427-1';
+import { DataSimulator } from './io/DataSimulator.js?v=protocol-plugin-20260427-1';
 import { Toolbar } from './ui/Toolbar.js?v=csv-autosave-20260424-1';
 import { Sidebar } from './ui/Sidebar.js?v=csv-autosave-20260424-1';
 import { Dashboard } from './ui/Dashboard.js?v=ui-fix-20260424-1';
@@ -74,7 +74,13 @@ class App {
 
     appState.project = project;
     appState.projectFileName = project.title || '';
-    appState.operationMode = project.protocol === 'STM32Binary' ? 'STM32Binary' : mode;
+    appState.updateFrameConfig({
+      separator: project.separator || ',',
+      startDelimiter: project.frameStart || '',
+      endDelimiter: project.frameEnd || '\\n',
+      frameDetection: project.frameDetection || 'EndDelimiterOnly'
+    });
+    appState.operationMode = String(project.protocol || '').toLowerCase().startsWith('stm32binary') ? 'STM32Binary' : mode;
 
     const tbProject = document.getElementById('tb-project');
     if (tbProject) tbProject.textContent = this._project.title;

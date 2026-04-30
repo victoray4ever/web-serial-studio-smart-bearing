@@ -207,9 +207,14 @@ export class PlotWidget extends WidgetBase {
     const yScale = this._chart.options?.scales?.y;
     if (!xScale || !yScale) return;
 
-    const start = Number.isFinite(xScale.min) ? Math.max(0, Math.floor(xScale.min)) : 0;
     const fallbackEnd = Math.max(...this._data.map((series) => series.length - 1), 0);
-    const end = Number.isFinite(xScale.max) ? Math.max(start, Math.ceil(xScale.max)) : fallbackEnd;
+    const isViewingHistory = Number.isFinite(xScale.max) && xScale.max < fallbackEnd - 2;
+    const start = isViewingHistory && Number.isFinite(xScale.min)
+      ? Math.max(0, Math.floor(xScale.min))
+      : 0;
+    const end = isViewingHistory
+      ? Math.max(start, Math.ceil(xScale.max))
+      : fallbackEnd;
 
     const visible = [];
     this._data.forEach((series) => {
@@ -229,11 +234,11 @@ export class PlotWidget extends WidgetBase {
     let max = Math.max(...visible);
 
     if (min === max) {
-      const padding = Math.max(Math.abs(min) * 0.1, 1);
+      const padding = Math.max(Math.abs(min) * 0.2, 2);
       min -= padding;
       max += padding;
     } else {
-      const padding = Math.max((max - min) * 0.1, 0.01);
+      const padding = Math.max((max - min) * 0.18, 2);
       min -= padding;
       max += padding;
     }

@@ -4,7 +4,7 @@
 import { eventBus } from '../core/EventBus.js';
 import { appState, ConnectionState } from '../core/AppState.js';
 import { t } from '../core/i18n.js';
-import { FrameParser } from '../core/FrameParser.js?v=accel-fix-20260423-2';
+import { FrameParser } from '../core/FrameParser.js?v=protocol-plugin-20260427-1';
 
 export class DataSimulator {
   constructor() {
@@ -19,6 +19,8 @@ export class DataSimulator {
     if (this._running) return;
     this._running = true;
     this._t = 0;
+    this._parser.reset();
+    this._parser.startStats();
     appState.connectionState = ConnectionState.Connected;
     eventBus.emit('toast', { type: 'success', message: t('messages.demoRunning') });
 
@@ -34,6 +36,7 @@ export class DataSimulator {
     this._running = false;
     clearInterval(this._timer);
     this._timer = null;
+    this._parser.stopStats();
     appState.connectionState = ConnectionState.Disconnected;
     eventBus.emit('toast', { type: 'info', message: t('messages.demoStopped') });
   }
@@ -75,6 +78,13 @@ export class DataSimulator {
   }
 
   _generateSTM32Frame() {
+    const protocol = String(appState.project?.protocol || '').toLowerCase();
+    return protocol === 'stm32binaryv2'
+      ? this._generateSTM32V2Frame()
+      : this._generateSTM32LegacyFrame();
+  }
+
+  _generateSTM32LegacyFrame() {
     const FRAME_SIZE = 5732;
     const buffer = new Uint8Array(FRAME_SIZE);
     const view = new DataView(buffer.buffer);
@@ -88,22 +98,71 @@ export class DataSimulator {
       view.setUint16(12 + i * 2, Math.floor(val), true);
     }
 
-    // Strain 1, 2, 3 (int8_t[480])
-    for (let i = 0; i < 480; i++) {
-      const s1 = Math.sin(this._t * 2 + i * 0.02) * 50;
-      const s2 = Math.cos(this._t * 1.5 + i * 0.02) * 40;
-      const s3 = Math.sin(this._t * 3 + i * 0.01) * 30;
-      view.setInt8(4276 + i, Math.floor(s1));
-      view.setInt8(4756 + i, Math.floor(s2));
-      view.setInt8(5236 + i, Math.floor(s3));
+    const setSigned24 = (offset, value) => {
+      const raw = Math.max(-0x800000, Math.min(0x7FFFFF, Math.round(value)));
+      const unsigned = raw < 0 ? raw + 0x1000000 : raw;
+      buffer[offset] = (unsigned >> 16) & 0xFF;
+      buffer[offset + 1] = (unsigned >> 8) & 0xFF;
+      buffer[offset + 2] = unsigned & 0xFF;
+    };
+
+    for (let i = 0; i < 160; i++) {
+      setSigned24(4276 + i * 3, Math.sin(this._t * 2 + i * 0.02) * 220000);
+      setSigned24(4756 + i * 3, Math.cos(this._t * 1.5 + i * 0.02) * 180000);
+      setSigned24(5236 + i * 3, Math.sin(this._t * 3 + i * 0.01) * 200000);
     }
 
-    // Temperature (int8_t[13])
-    view.setInt8(5716, 25 + Math.sin(this._t * 0.1) * 5);
-    view.setInt8(5717, 30 + Math.cos(this._t * 0.1) * 3);
+    setSigned24(5716, 900000 + Math.sin(this._t * 0.1) * 80000);
+    view.setInt16(5719, Math.round((30 + Math.cos(this._t * 0.1) * 3) / 0.0078125), false);
 
     // Tail
     buffer.set([0xDD, 0xEE], 5730);
+
+    return buffer;
+  }
+
+  _generateSTM32V2Frame() {
+    const FRAME_SIZE = 1468;
+    const STRAIN_SAMPLES = 160;
+    const STRAIN1_OFFSET = 12;
+    const STRAIN2_OFFSET = 492;
+    const STRAIN3_OFFSET = 972;
+    const TEMP_OFFSET = 1452;
+    const TAIL_OFFSET = 1466;
+    const buffer = new Uint8Array(FRAME_SIZE);
+
+    // Header
+    buffer.set([0x5A, 0xA5, 0xB5, 0x0A, 0x02, 0xDD, 0x80, 0x02, 0xA0, 0x00, 0x01, 0x00], 0);
+
+    const setSigned24 = (offset, value) => {
+      const raw = Math.max(-0x800000, Math.min(0x7FFFFF, Math.round(value)));
+      const unsigned = raw < 0 ? raw + 0x1000000 : raw;
+      buffer[offset] = (unsigned >> 16) & 0xFF;
+      buffer[offset + 1] = (unsigned >> 8) & 0xFF;
+      buffer[offset + 2] = unsigned & 0xFF;
+    };
+
+    const temperatureToAds124S08Code = (temperatureC) => {
+      const A = 3.9083e-3;
+      const B = -5.775e-7;
+      return (1 + (A * temperatureC) + (B * temperatureC * temperatureC)) / 2.980232e-6;
+    };
+
+    // Strain 1, 2, 3 (160 samples each, signed 24-bit big-endian).
+    for (let i = 0; i < STRAIN_SAMPLES; i++) {
+      const s1 = Math.sin(this._t * 2 + i * 0.04) * 220000;
+      const s2 = Math.cos(this._t * 1.5 + i * 0.035) * 180000;
+      const s3 = Math.sin(this._t * 3 + i * 0.03 + 0.8) * 200000;
+      setSigned24(STRAIN1_OFFSET + i * 3, s1);
+      setSigned24(STRAIN2_OFFSET + i * 3, s2);
+      setSigned24(STRAIN3_OFFSET + i * 3, s3);
+    }
+
+    // Temperature (one 24-bit ADS124S08 RTD code; remaining payload is zero padding).
+    setSigned24(TEMP_OFFSET, temperatureToAds124S08Code(27 + Math.cos(this._t * 0.1) * 2));
+
+    // Tail
+    buffer.set([0xDD, 0xEE], TAIL_OFFSET);
 
     return buffer;
   }
