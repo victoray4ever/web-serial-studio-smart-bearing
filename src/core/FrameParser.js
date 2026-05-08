@@ -4,6 +4,47 @@
 import { eventBus } from './EventBus.js';
 import { appState, OperationMode } from './AppState.js';
 
+const STM32_BEARING_FRAMES = {
+  legacy: {
+    FULL_SIZE: 5732,
+    PAYLOAD_SIZE: 5728,
+    LENGTH_FIELD_BIAS: null,
+    VIBRATION_OFFSET: 12,
+    VIBRATION_SAMPLES: 2132,
+    STRAIN_SAMPLES: 160,
+    STRAIN1_OFFSET: 4276,
+    STRAIN2_OFFSET: 4756,
+    STRAIN3_OFFSET: 5236,
+    TEMP_OFFSET: 5716,
+    TMP117_OFFSET: 5719,
+    STRAIN_GAIN: null,
+    STRAIN_GAUGE_FACTOR: null,
+    STRAIN_BRIDGE_EXCITATION: null,
+    TAIL_OFFSET: 5730,
+    MAX_BUFFER_WITHOUT_TAIL: 15000
+  },
+  v2: {
+    FULL_SIZE: 1468,
+    PAYLOAD_SIZE: 1464,
+    LENGTH_FIELD_BIAS: 7,
+    LEGACY_LENGTH_FIELD_FULL_SIZE: 2748,
+    VIBRATION_OFFSET: null,
+    VIBRATION_SAMPLES: 0,
+    STRAIN_SAMPLES: 160,
+    STRAIN1_OFFSET: 12,
+    STRAIN2_OFFSET: 492,
+    STRAIN3_OFFSET: 972,
+    TEMP_OFFSET: 1452,
+    TMP117_OFFSET: null,
+    STRAIN_GAIN: 100,
+    STRAIN_GAUGE_FACTOR: 2,
+    STRAIN_BRIDGE_EXCITATION: 2.5,
+    TEMP_MODE: 'ADS124S08_RTD',
+    TAIL_OFFSET: 1466,
+    MAX_BUFFER_WITHOUT_TAIL: 8192
+  }
+};
+
 export class FrameParser {
   constructor() {
     this._buffer = new Uint8Array(0);
@@ -12,18 +53,29 @@ export class FrameParser {
     this._frameCount = 0;
     this._frameRateCounter = 0;
     this._frameRateTimer = null;
-    this._startFrameRate();
   }
 
-  _startFrameRate() {
+  startStats() {
+    if (this._frameRateTimer) return;
+    this._frameRateCounter = 0;
+    appState.dataRate = 0;
     this._frameRateTimer = setInterval(() => {
       appState.dataRate = this._frameRateCounter;
       this._frameRateCounter = 0;
     }, 1000);
   }
 
+  stopStats({ resetRate = true } = {}) {
+    if (this._frameRateTimer) {
+      clearInterval(this._frameRateTimer);
+      this._frameRateTimer = null;
+    }
+    this._frameRateCounter = 0;
+    if (resetRate) appState.dataRate = 0;
+  }
+
   destroy() {
-    if (this._frameRateTimer) clearInterval(this._frameRateTimer);
+    this.stopStats();
   }
 
   /**
@@ -61,9 +113,7 @@ export class FrameParser {
   }
 
   _tryParseDirectSTM32MqttMessage(newData) {
-    const mode = appState.operationMode;
-    const stm32Mode = mode === OperationMode.STM32Binary || mode === OperationMode.ProjectFile;
-    if (!stm32Mode || appState.busType !== 'MQTT') return false;
+    if (!this._isSTM32Protocol() || appState.busType !== 'MQTT') return false;
 
     const payloadSize = this._stm32PayloadSize();
     if (newData.length >= payloadSize && newData.length % payloadSize === 0) {
@@ -119,7 +169,8 @@ export class FrameParser {
   }
 
   _drainMqttBinaryFrames() {
-    const payloadSize = this._stm32PayloadSize();
+    const frameConfig = this._stm32FrameConfig();
+    const payloadSize = frameConfig.PAYLOAD_SIZE;
     const minFrameSize = payloadSize + 4;
 
     while (this._mqttBinaryBuffer.length >= payloadSize) {
@@ -136,25 +187,23 @@ export class FrameParser {
           this._mqttBinaryBuffer = this._mqttBinaryBuffer.slice(headerPos);
         }
 
-        if (this._mqttBinaryBuffer.length < minFrameSize) {
+        const expectedFrameSize = this._stm32FrameSizeFromHeader(this._mqttBinaryBuffer, 0);
+
+        if (this._mqttBinaryBuffer.length < expectedFrameSize) {
           return;
         }
 
-        let tailPos = -1;
-        for (let i = 5700; i <= this._mqttBinaryBuffer.length - 2; i++) {
-          if (this._mqttBinaryBuffer[i] === 0xDD && this._mqttBinaryBuffer[i + 1] === 0xEE) {
-            tailPos = i;
-            break;
+        const tailPos = expectedFrameSize - 2;
+        if (this._mqttBinaryBuffer[tailPos] !== 0xDD || this._mqttBinaryBuffer[tailPos + 1] !== 0xEE) {
+          if (this._mqttBinaryBuffer.length > minFrameSize * 2) {
+            this._mqttBinaryBuffer = this._mqttBinaryBuffer.slice(2);
           }
-        }
-
-        if (tailPos === -1) {
           return;
         }
 
-        const frame = this._mqttBinaryBuffer.slice(0, tailPos + 2);
+        const frame = this._mqttBinaryBuffer.slice(0, expectedFrameSize);
         this._emitSTM32BearingFrame(frame, false, frame.length);
-        this._mqttBinaryBuffer = this._mqttBinaryBuffer.slice(tailPos + 2);
+        this._mqttBinaryBuffer = this._mqttBinaryBuffer.slice(expectedFrameSize);
         continue;
       }
 
@@ -181,7 +230,8 @@ export class FrameParser {
   }
 
   _alignMqttPayloadStream() {
-    const payloadSize = this._stm32PayloadSize();
+    const frameConfig = this._stm32FrameConfig();
+    const payloadSize = frameConfig.PAYLOAD_SIZE;
     if (this._mqttBinaryBuffer.length < payloadSize) {
       return -1;
     }
@@ -198,41 +248,35 @@ export class FrameParser {
 
   _looksLikeBearingPayloadAt(start) {
     const buf = this._mqttBinaryBuffer;
-    const payloadSize = this._stm32PayloadSize();
+    const frameConfig = this._stm32FrameConfig();
+    const payloadSize = frameConfig.PAYLOAD_SIZE;
     if (start < 0 || start + payloadSize > buf.length) {
       return false;
     }
 
-    const zeroRunStart = start + 4754;
-    const zeroRunEnd = start + 5234;
-    if (zeroRunEnd > buf.length) {
+    const declaredFrameSize = this._stm32FrameSizeFromPayload(buf, start);
+    if (declaredFrameSize !== frameConfig.FULL_SIZE) {
       return false;
     }
 
-    let zeroCount = 0;
-    for (let i = zeroRunStart; i < zeroRunEnd; i++) {
-      if (buf[i] === 0x00) zeroCount++;
+    const strainStart = start + frameConfig.STRAIN1_OFFSET - 2;
+    const tempStart = start + frameConfig.TEMP_OFFSET - 2;
+    let nonZeroStrain = 0;
+    for (let i = strainStart; i < tempStart; i++) {
+      if (buf[i] !== 0x00) nonZeroStrain++;
     }
-
-    // This STM32 payload has a very long zero-filled block in the middle.
-    if (zeroCount < 430) {
+    if (nonZeroStrain < 120) {
       return false;
     }
 
-    let nonZeroBefore = 0;
-    for (let i = start + 4274; i < start + 4754; i++) {
-      if (buf[i] !== 0x00) nonZeroBefore++;
-    }
-    if (nonZeroBefore < 120) {
-      return false;
-    }
-
-    let nonZeroAfter = 0;
-    for (let i = start + 5234; i < start + 5714; i++) {
-      if (buf[i] !== 0x00) nonZeroAfter++;
+    const paddingStart = tempStart + (frameConfig.TMP117_OFFSET === null ? 3 : 5);
+    const paddingEnd = start + payloadSize;
+    let zeroPadding = 0;
+    for (let i = paddingStart; i < paddingEnd; i++) {
+      if (buf[i] === 0x00) zeroPadding++;
     }
 
-    return nonZeroAfter > 120;
+    return zeroPadding >= 8;
   }
 
   _hexToBytes(hex) {
@@ -251,8 +295,7 @@ export class FrameParser {
   _parse() {
     const mode = appState.operationMode;
 
-    // STM32 Binary mode explicitly
-    if (mode === OperationMode.STM32Binary) {
+    if (this._isSTM32Protocol()) {
       if (this._findSTM32Header() !== -1) {
         this._parseSTM32Binary();
       }
@@ -264,26 +307,47 @@ export class FrameParser {
     } else if (mode === OperationMode.QuickPlot) {
       this._parseCSV();
     } else if (mode === OperationMode.ProjectFile) {
-      // MQTT payloads may begin mid-frame, so scan for the STM32 header
-      // anywhere in the buffer before falling back to CSV parsing.
-      if (this._findSTM32Header() !== -1) {
-        this._parseSTM32Binary();
-      } else {
-        this._parseCSV();
-      }
+      this._parseProjectFile();
     } else {
       this._parseWithDelimiters();
     }
   }
 
+  _projectProtocol() {
+    return String(appState.project?.protocol || '').trim().toLowerCase();
+  }
+
+  _isSTM32Protocol() {
+    const mode = appState.operationMode;
+    return mode === OperationMode.STM32Binary ||
+      (mode === OperationMode.ProjectFile && this._projectProtocol().startsWith('stm32binary'));
+  }
+
+  _stm32FrameConfig() {
+    return this._projectProtocol() === 'stm32binaryv2'
+      ? STM32_BEARING_FRAMES.v2
+      : STM32_BEARING_FRAMES.legacy;
+  }
+
+  _parseProjectFile() {
+    const protocol = this._projectProtocol();
+    if (protocol === 'json' || protocol === 'devicesendsjson') {
+      this._parseJSON();
+      return;
+    }
+
+    this._parseWithDelimiters();
+  }
+
   _parseSTM32Binary() {
+    const frameConfig = this._stm32FrameConfig();
     const HEADER_0 = 0x5A;
     const HEADER_1 = 0xA5;
     const TAIL_0 = 0xDD;
     const TAIL_1 = 0xEE;
-    const EXPECTED_MIN_SIZE = 5700; // minimum expected size to avoid false tail detection
+    const EXPECTED_MIN_SIZE = frameConfig.FULL_SIZE;
 
-    while (this._buffer.length >= EXPECTED_MIN_SIZE) {
+    while (this._buffer.length >= 4) {
       // Find header
       let startIdx = -1;
       for (let i = 0; i <= this._buffer.length - 2; i++) {
@@ -299,34 +363,31 @@ export class FrameParser {
         break;
       }
 
-      // Find tail after header
-      let endIdx = -1;
-      // Start searching for tail near the expected end to avoid picking up 0xDD 0xEE in the data payload
-      const searchStart = startIdx + 5700; 
-      for (let i = searchStart; i <= this._buffer.length - 2; i++) {
-        if (this._buffer[i] === TAIL_0 && this._buffer[i + 1] === TAIL_1) {
-          endIdx = i;
-          break;
-        }
+      if (this._buffer.length - startIdx < EXPECTED_MIN_SIZE) {
+        if (startIdx > 0) this._buffer = this._buffer.slice(startIdx);
+        break;
       }
 
-      if (endIdx === -1) {
-        // Header found but no tail yet. Wait for more data.
-        // If buffer is getting too large without finding a tail, discard the header to prevent memory leak.
-        if (this._buffer.length - startIdx > 15000) {
-            this._buffer = this._buffer.slice(startIdx + 2);
-            continue; 
+      const frameSize = this._stm32FrameSizeFromHeader(this._buffer, startIdx);
+      const tailIdx = startIdx + frameSize - 2;
+      if (tailIdx + 1 >= this._buffer.length) {
+        if (this._buffer.length - startIdx > frameConfig.MAX_BUFFER_WITHOUT_TAIL) {
+          this._buffer = this._buffer.slice(startIdx + 2);
+          continue;
         }
-        break; // Wait for more data
+        break;
       }
 
-      const FRAME_SIZE = (endIdx + 2) - startIdx;
-      
+      if (this._buffer[tailIdx] !== TAIL_0 || this._buffer[tailIdx + 1] !== TAIL_1) {
+        this._buffer = this._buffer.slice(startIdx + 2);
+        continue;
+      }
+
       // Extract frame
-      const frameData = this._buffer.slice(startIdx, startIdx + FRAME_SIZE);
-      this._buffer = this._buffer.slice(startIdx + FRAME_SIZE);
+      const frameData = this._buffer.slice(startIdx, startIdx + frameSize);
+      this._buffer = this._buffer.slice(startIdx + frameSize);
 
-      this._emitSTM32BearingFrame(frameData, false, FRAME_SIZE);
+      this._emitSTM32BearingFrame(frameData, false, frameSize);
     }
   }
 
@@ -341,36 +402,39 @@ export class FrameParser {
   }
 
   _stm32PayloadSize() {
-    // Serial Studio strips only the configured delimiters (5A A5 / DD EE).
-    // This STM32 frame keeps the remaining 10-byte header prefix and the
-    // 9-byte reserved tail padding inside the MQTT payload:
-    // 5732-byte full frame - 2-byte start delimiter - 2-byte end delimiter.
-    return 5728;
+    return this._stm32FrameConfig().PAYLOAD_SIZE;
+  }
+
+  _stm32FrameSizeFromHeader(buffer, start) {
+    const frameConfig = this._stm32FrameConfig();
+    if (start + 3 >= buffer.length || frameConfig.LENGTH_FIELD_BIAS === null) {
+      return frameConfig.FULL_SIZE;
+    }
+    const declared = buffer[start + 2] | (buffer[start + 3] << 8);
+    const frameSize = declared + frameConfig.LENGTH_FIELD_BIAS;
+    if (frameSize === frameConfig.FULL_SIZE) return frameSize;
+    if (frameSize === frameConfig.LEGACY_LENGTH_FIELD_FULL_SIZE) return frameConfig.FULL_SIZE;
+    return frameConfig.FULL_SIZE;
+  }
+
+  _stm32FrameSizeFromPayload(buffer, start) {
+    const frameConfig = this._stm32FrameConfig();
+    if (frameConfig.LENGTH_FIELD_BIAS === null) return frameConfig.FULL_SIZE;
+    if (start + 1 >= buffer.length) return 0;
+    const declared = buffer[start] | (buffer[start + 1] << 8);
+    const frameSize = declared + frameConfig.LENGTH_FIELD_BIAS;
+    if (frameSize === frameConfig.LEGACY_LENGTH_FIELD_FULL_SIZE) return frameConfig.FULL_SIZE;
+    return frameSize;
   }
 
   _emitSTM32BearingFrame(frameData, payloadOnly = false, frameSize = frameData.length) {
+    const frameConfig = this._stm32FrameConfig();
+    const requiredSize = payloadOnly ? frameConfig.PAYLOAD_SIZE : frameConfig.FULL_SIZE;
+    if (frameData.length < requiredSize) return;
+
     const view = new DataView(frameData.buffer, frameData.byteOffset, frameData.byteLength);
     const shift = payloadOnly ? -2 : 0;
     const adjusted = (offset) => offset + shift;
-    const accelScale = 0.000488;
-
-    const toAccelG = (raw, removeGravity = false) => {
-      const accelG = raw * accelScale;
-      if (!removeGravity) return accelG;
-      if (accelG === 0) return 0;
-      return accelG - Math.sign(accelG);
-    };
-
-    // 1. Extract acceleration waveform (int16_t adcx[2132]) - Little Endian.
-    // This channel is treated as the Z-axis acceleration. After converting
-    // the signed ADC values to g, remove the static 1 g gravity component so
-    // the resting baseline is close to 0 g.
-    const accelZ = [];
-    for (let i = 0; i < 2132; i++) {
-      const raw = view.getInt16(adjusted(12) + i * 2, true);
-      accelZ.push(toAccelG(raw, true));
-    }
-
     const parseSigned24BitRaw = (offset) => {
       const pos = adjusted(offset);
       const msb = frameData[pos];
@@ -382,37 +446,93 @@ export class FrameParser {
     };
 
     const convertAds24ToVoltage = (raw) => (raw * 2.5) / 8388608.0;
+    const convertAds124S08CodeToTemperature = (code) => {
+      const A = 3.9083e-3;
+      const B = -5.775e-7;
+      const scale = 2.980232e-6;
+      const discriminant = (A * A) - (4 * B * (1 - (code * scale)));
+      if (discriminant < 0) return NaN;
+      return (-A + Math.sqrt(discriminant)) / (2 * B);
+    };
+    const convertVoltageToStrain = (voltage) => {
+      if (!frameConfig.STRAIN_GAIN) return voltage;
+      return (4 * voltage) /
+        (frameConfig.STRAIN_GAIN * frameConfig.STRAIN_GAUGE_FACTOR * frameConfig.STRAIN_BRIDGE_EXCITATION);
+    };
 
-    // 2. Extract Strain 1, 2, 3 (each is 160 samples of 24-bit signed data)
+    const datasets = [];
+
+    if (frameConfig.VIBRATION_SAMPLES > 0 && frameConfig.VIBRATION_OFFSET !== null) {
+      const accelScale = 0.000488;
+      const toAccelG = (raw, removeGravity = false) => {
+        const accelG = raw * accelScale;
+        if (!removeGravity) return accelG;
+        if (accelG === 0) return 0;
+        return accelG - Math.sign(accelG);
+      };
+
+      // Legacy frames include acceleration waveform data before strain data.
+      const accelZ = [];
+      for (let i = 0; i < frameConfig.VIBRATION_SAMPLES; i++) {
+        const raw = view.getInt16(adjusted(frameConfig.VIBRATION_OFFSET) + i * 2, true);
+        accelZ.push(toAccelG(raw, true));
+      }
+
+      datasets.push({
+        title: 'Accel Z',
+        value: accelZ[accelZ.length - 1],
+        index: datasets.length,
+        buffer: accelZ
+      });
+    }
+
+    // Extract Strain 1, 2, 3 (each is 160 samples of 24-bit signed data).
     const str1 = [];
     const str2 = [];
     const str3 = [];
-    for (let i = 0; i < 160; i++) {
-      str1.push(convertAds24ToVoltage(parseSigned24BitRaw(4276 + i * 3)));
-      str2.push(convertAds24ToVoltage(parseSigned24BitRaw(4756 + i * 3)));
-      str3.push(convertAds24ToVoltage(parseSigned24BitRaw(5236 + i * 3)));
+    for (let i = 0; i < frameConfig.STRAIN_SAMPLES; i++) {
+      str1.push(convertVoltageToStrain(convertAds24ToVoltage(parseSigned24BitRaw(frameConfig.STRAIN1_OFFSET + i * 3))));
+      str2.push(convertVoltageToStrain(convertAds24ToVoltage(parseSigned24BitRaw(frameConfig.STRAIN2_OFFSET + i * 3))));
+      str3.push(convertVoltageToStrain(convertAds24ToVoltage(parseSigned24BitRaw(frameConfig.STRAIN3_OFFSET + i * 3))));
     }
 
-    // 3. Extract temperatures
-    const tempOffset = adjusted(5716);
-    const temp1 = convertAds24ToVoltage(parseSigned24BitRaw(5716));
+    datasets.push(
+      { title: 'Strain 1', value: str1[str1.length - 1], index: datasets.length, buffer: str1 },
+      { title: 'Strain 2', value: str2[str2.length - 1], index: datasets.length + 1, buffer: str2 },
+      { title: 'Strain 3', value: str3[str3.length - 1], index: datasets.length + 2, buffer: str3 }
+    );
 
-    const tmp117_msb = frameData[tempOffset + 3];
-    const tmp117_lsb = frameData[tempOffset + 4];
-    let tmp117_val = (tmp117_msb << 8) | tmp117_lsb;
-    if (tmp117_val & 0x8000) tmp117_val -= 0x10000;
-    const temp2 = tmp117_val * 0.0078125;
+    // Extract temperature channels.
+    const tempRaw = parseSigned24BitRaw(frameConfig.TEMP_OFFSET);
+    const temp1 = frameConfig.TEMP_MODE === 'ADS124S08_RTD'
+      ? convertAds124S08CodeToTemperature(tempRaw)
+      : convertAds24ToVoltage(tempRaw);
+    let temp2 = null;
+    if (frameConfig.TMP117_OFFSET !== null) {
+      const tmp117_msb = frameData[adjusted(frameConfig.TMP117_OFFSET)];
+      const tmp117_lsb = frameData[adjusted(frameConfig.TMP117_OFFSET) + 1];
+      let tmp117_val = (tmp117_msb << 8) | tmp117_lsb;
+      if (tmp117_val & 0x8000) tmp117_val -= 0x10000;
+      temp2 = tmp117_val * 0.0078125;
+    }
+
+    datasets.push({
+      title: frameConfig.TEMP_MODE === 'ADS124S08_RTD' ? 'Temperature' : 'ADC Temp',
+      value: temp1,
+      index: datasets.length
+    });
+
+    if (temp2 !== null) {
+      datasets.push({
+        title: frameConfig.STRAIN_GAIN ? 'Temperature 2' : 'TMP117',
+        value: temp2,
+        index: 5
+      });
+    }
 
     this._emitFrame({
       title: 'STM32 Bearing Data',
-      datasets: [
-        { title: 'Accel Z',   value: accelZ[accelZ.length - 1], index: 0, buffer: accelZ },
-        { title: 'Strain 1',  value: str1[str1.length - 1], index: 1, buffer: str1 },
-        { title: 'Strain 2',  value: str2[str2.length - 1], index: 2, buffer: str2 },
-        { title: 'Strain 3',  value: str3[str3.length - 1], index: 3, buffer: str3 },
-        { title: 'ADC Temp',  value: temp1, index: 4 },
-        { title: 'TMP117',    value: temp2, index: 5 }
-      ],
+      datasets,
       raw: (payloadOnly ? 'Binary Payload' : 'Binary Frame') + ` (${frameSize} bytes)`,
       timestamp: Date.now()
     });
@@ -530,8 +650,9 @@ export class FrameParser {
     }
   }
 
-  _parseFrameContent(content) {
-    const values = content.split(',').map(v => {
+  _parseFrameContent(content, separator = appState.frameConfig.separator || ',') {
+    const resolvedSeparator = this._resolveDelimiter(separator) || ',';
+    const values = content.split(resolvedSeparator).map(v => {
       const n = parseFloat(v.trim());
       return isNaN(n) ? v.trim() : n;
     });

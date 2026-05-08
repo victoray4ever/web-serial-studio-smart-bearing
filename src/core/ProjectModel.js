@@ -4,6 +4,7 @@
 
 export const defaultProject = () => ({
   title: 'Untitled Project',
+  protocol: 'Delimited',
   separator: ',',
   frameStart: '',
   frameEnd: '\\n',
@@ -97,7 +98,7 @@ export class ProjectModel {
   _validateProject(data) {
     return {
       title: data.title || 'Untitled',
-      protocol: data.protocol || '',
+      protocol: data.protocol || 'Delimited',
       separator: data.separator || ',',
       frameStart: data.frameStart || '',
       frameEnd: data.frameEnd || '\\n',
