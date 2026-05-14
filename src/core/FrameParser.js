@@ -59,6 +59,7 @@ const STM32_BEARING_FRAMES = {
     TEMPERATURE1_OFFSET: 32,
     TEMPERATURE2_OFFSET: 35,
     VIBRATION_OFFSET: 38,
+    TEMPERATURE_OFFSET_C: 6.62,
     CHECKSUM_SIZE: 1,
     DEFAULT_SAMPLES: 512,
     DEFAULT_CHANNEL_COUNT: 4,
@@ -649,8 +650,9 @@ export class FrameParser {
       return;
     }
 
-    const temp1 = convertRtdCodeToTemperature(readSigned24BE(frameConfig.TEMPERATURE1_OFFSET));
-    const temp2 = convertRtdCodeToTemperature(readSigned24BE(frameConfig.TEMPERATURE2_OFFSET));
+    const tempOffset = frameConfig.TEMPERATURE_OFFSET_C || 0;
+    const temp1 = convertRtdCodeToTemperature(readSigned24BE(frameConfig.TEMPERATURE1_OFFSET)) + tempOffset;
+    const temp2 = convertRtdCodeToTemperature(readSigned24BE(frameConfig.TEMPERATURE2_OFFSET)) + tempOffset;
 
     const vibration3 = [];
     const vibration4 = [];
