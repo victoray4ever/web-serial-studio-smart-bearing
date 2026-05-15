@@ -4,15 +4,15 @@
 import { eventBus } from './core/EventBus.js';
 import { appState } from './core/AppState.js';
 import { applyTheme, modeLabel, t } from './core/i18n.js?v=csv-autosave-20260424-1';
-import { ConnectionManager } from './io/ConnectionManager.js?v=project-parser-worker-20260514-1';
-import { DataSimulator } from './io/DataSimulator.js?v=project-parser-worker-20260514-1';
+import { ConnectionManager } from './io/ConnectionManager.js?v=fixed-binary-frame-20260515-1';
+import { DataSimulator } from './io/DataSimulator.js?v=fixed-binary-frame-20260515-1';
 import { Toolbar } from './ui/Toolbar.js?v=csv-autosave-20260424-1';
 import { Sidebar } from './ui/Sidebar.js?v=csv-autosave-20260424-1';
 import { Dashboard } from './ui/Dashboard.js?v=plot-live-x-fix-20260514-1';
 import { Console } from './ui/Console.js?v=ui-fix-20260424-1';
-import { ProjectModel } from './core/ProjectModel.js?v=project-parser-worker-20260514-1';
+import { ProjectModel } from './core/ProjectModel.js?v=visual-parser-save-20260515-1';
 import { PreferencesDialog } from './ui/PreferencesDialog.js?v=csv-autosave-20260424-1';
-import { ProjectEditorDialog } from './ui/ProjectEditorDialog.js?v=editor-fix-20260424-1';
+import { ProjectEditorDialog } from './ui/ProjectEditorDialog.js?v=field-index-20260515-1';
 import { runDocCaptureScenario } from './utils/docCapture.js?v=doc-capture-20260424-1';
 
 class App {
