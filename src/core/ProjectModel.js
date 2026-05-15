@@ -9,6 +9,7 @@ export const defaultProject = () => ({
   frameStart: '',
   frameEnd: '\\n',
   frameDetection: 'EndDelimiterOnly',
+  frameParser: "function parse(frame) {\n  return frame.split(',').map(Number);\n}\n",
   groups: [
     {
       title: 'Sensor Data',
@@ -96,6 +97,18 @@ export class ProjectModel {
   }
 
   _validateProject(data) {
+    const sources = Array.isArray(data.sources) ? data.sources.map((source, index) => ({
+      ...source,
+      title: source.title || `Source ${index + 1}`,
+      sourceId: source.sourceId ?? index,
+      frameParserCode: source.frameParserCode || source.frameParser || '',
+      frameParserLanguage: source.frameParserLanguage ?? 0
+    })) : [];
+    const frameParserCode = data.frameParserCode ||
+      data.frameParser ||
+      sources[0]?.frameParserCode ||
+      '';
+
     return {
       title: data.title || 'Untitled',
       protocol: data.protocol || 'Delimited',
@@ -103,6 +116,11 @@ export class ProjectModel {
       frameStart: data.frameStart || '',
       frameEnd: data.frameEnd || '\\n',
       frameDetection: data.frameDetection || 'EndDelimiterOnly',
+      hexadecimalDelimiters: data.hexadecimalDelimiters ?? false,
+      frameParser: data.frameParser || frameParserCode,
+      frameParserCode,
+      frameParserLanguage: data.frameParserLanguage ?? sources[0]?.frameParserLanguage ?? 0,
+      sources,
       groups: (data.groups || []).map(g => {
         const groupWidget = g.widget || 'DataGrid';
         return {

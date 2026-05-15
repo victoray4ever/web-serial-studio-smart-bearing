@@ -74,8 +74,11 @@ export class CompassWidget extends WidgetBase {
       const rad = (angle - 90) * Math.PI / 180;
       const tx = cx + (r - 14) * Math.cos(rad);
       const ty = cy + (r - 14) * Math.sin(rad);
+      const uiFont = getComputedStyle(document.documentElement)
+        .getPropertyValue('--font-sans')
+        .trim() || 'Helvetica, Arial, "Microsoft YaHei", sans-serif';
       ctx.fillStyle = color;
-      ctx.font = `bold 12px "Times New Roman", serif`;
+      ctx.font = `bold 12px ${uiFont}`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(label, tx, ty);

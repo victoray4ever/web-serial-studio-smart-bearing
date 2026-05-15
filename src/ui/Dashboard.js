@@ -4,12 +4,37 @@
 import { eventBus } from '../core/EventBus.js';
 import { appState } from '../core/AppState.js';
 import { t } from '../core/i18n.js';
-import { PlotWidget } from '../widgets/PlotWidget.js?v=font-load-demo-20260513-1';
+import { PlotWidget } from '../widgets/PlotWidget.js?v=plot-live-x-fix-20260514-1';
 import { GaugeWidget } from '../widgets/GaugeWidget.js';
 import { BarWidget } from '../widgets/BarWidget.js';
 import { CompassWidget } from '../widgets/CompassWidget.js';
+import { LedWidget } from '../widgets/LedWidget.js?v=dashboard-editor-fix-20260514-1';
+import { FftWidget } from '../widgets/FftWidget.js?v=dashboard-editor-fix-20260514-1';
 import { DataGridWidget } from '../widgets/DataGridWidget.js';
 import { AccelWidget } from '../widgets/AccelWidget.js';
+
+function finiteValues(values) {
+  return values
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value));
+}
+
+function plotRangeForDatasets(datasets) {
+  const mins = finiteValues(datasets.map((dataset) => dataset.min ?? dataset.plotMin));
+  const maxs = finiteValues(datasets.map((dataset) => dataset.max ?? dataset.plotMax));
+  return {
+    yMin: mins.length ? Math.min(...mins) : undefined,
+    yMax: maxs.length ? Math.max(...maxs) : undefined
+  };
+}
+
+function datasetLabel(dataset) {
+  return dataset.title + (dataset.units ? ` (${dataset.units})` : '');
+}
+
+function isEnabled(value) {
+  return value !== false;
+}
 
 function buildDefaultLayout(width) {
   const col = Math.floor(width / 3);
@@ -235,15 +260,30 @@ export class Dashboard {
 
   _autoLayout() {
     const width = (this._grid.clientWidth || 1100) - 8;
-    const layout = buildDefaultLayout(width);
-    this._widgets.forEach((w, i) => {
-      const pos = layout[i];
-      if (pos && w._el) {
-        w._el.style.left = `${pos.config.x}px`;
-        w._el.style.top = `${pos.config.y}px`;
-        w._el.style.width = `${pos.config.w}px`;
-        w._el.style.height = `${pos.config.h}px`;
+    let x = 0;
+    let y = 0;
+    let rowH = 0;
+    const gap = 8;
+    this._widgets.forEach((w) => {
+      if (!w._el) return;
+      const widgetW = Math.min(width, parseInt(w._el.style.width, 10) || w.config.w || 360);
+      const widgetH = parseInt(w._el.style.height, 10) || w.config.h || 260;
+      if (x > 0 && x + widgetW > width) {
+        x = 0;
+        y += rowH + gap;
+        rowH = 0;
       }
+      w._el.style.left = `${x}px`;
+      w._el.style.top = `${y}px`;
+      w._el.style.width = `${widgetW}px`;
+      w._el.style.height = `${widgetH}px`;
+      w.config.x = x;
+      w.config.y = y;
+      w.config.w = widgetW;
+      w.config.h = widgetH;
+      w._onResize?.();
+      x += widgetW + gap;
+      rowH = Math.max(rowH, widgetH);
     });
     this._updateCanvasHeight();
   }
@@ -259,81 +299,158 @@ export class Dashboard {
       const units = String(d.units || '').toLowerCase();
       return title.includes('temp') || units.includes('°c') || units === 'c';
     };
+    const wantsPlot = (d) => isEnabled(d.plot);
     const plotDatasets = datasets.filter((d) => {
       const widget = String(d.widget || '').toLowerCase();
       const isGaugeLike = widget === 'gauge' || widget === 'gauges';
       const isTemperature = isTemperatureDataset(d);
-      return d.plot !== false && d.graph !== false && !isGaugeLike && !isTemperature;
+      return wantsPlot(d) && !isGaugeLike && !isTemperature;
     });
-    const temperatureDatasets = datasets.filter((d) => isTemperatureDataset(d));
-    const gaugeDatasets = [];
-    (project.groups || []).forEach((group) => {
-      const groupForcesGauge = group.widget === 'Gauges';
-      (group.datasets || []).forEach((dataset) => {
-        if (groupForcesGauge || dataset.gauge) {
-          gaugeDatasets.push(dataset);
-        }
-      });
-    });
+    const temperatureDatasets = datasets.filter((d) => wantsPlot(d) && isTemperatureDataset(d));
+    const gaugeDatasets = datasets.filter((d) => d.gauge);
+    const barDatasets = datasets.filter((d) => d.bar);
+    const compassDatasets = datasets.filter((d) => d.compass);
+    const ledDatasets = datasets.filter((d) => d.led);
+    const fftDatasets = datasets.filter((d) => d.fft);
 
     const width = (this._grid?.clientWidth || 1100) - 8;
     let y = 0;
+    const gap = 8;
 
-    if (plotDatasets.length > 0) {
-      const mp = new PlotWidget({
-        title: `${project.title} - ${t('dashboard.overview')}`,
-        icon: 'PLOT',
-        datasetIndices: plotDatasets.map((d) => d.index),
-        datasetLabels: plotDatasets.map((d) => d.title + (d.units ? ` (${d.units})` : '')),
-        x: 0, y, w: width, h: 280
-      });
-      mp.mount(this._canvas);
-      this._widgets.push(mp);
-      y += 288;
+    const mountWidget = (widget) => {
+      widget.mount(this._canvas);
+      this._widgets.push(widget);
+      return widget;
+    };
+
+    if (plotDatasets.length > 0 || temperatureDatasets.length > 0) {
+      const hasMainPlot = plotDatasets.length > 0;
+      const hasTempPlot = temperatureDatasets.length > 0;
+      const plotHeight = 280;
+      const mainWidth = hasMainPlot && hasTempPlot ? Math.floor(width * 0.66) : width;
+      const tempX = hasMainPlot ? mainWidth + gap : 0;
+      const tempWidth = hasMainPlot ? Math.max(280, width - tempX) : width;
+
+      if (hasMainPlot) {
+        const range = plotRangeForDatasets(plotDatasets);
+        mountWidget(new PlotWidget({
+          title: `${project.title} - ${t('dashboard.overview')}`,
+          icon: 'PLOT',
+          datasetIndices: plotDatasets.map((d) => d.index),
+          datasetLabels: plotDatasets.map(datasetLabel),
+          yMin: range.yMin,
+          yMax: range.yMax,
+          x: 0, y, w: mainWidth, h: plotHeight
+        }));
+      }
+
+      if (hasTempPlot) {
+        const range = plotRangeForDatasets(temperatureDatasets);
+        mountWidget(new PlotWidget({
+          title: 'Temperature Trend',
+          icon: 'PLOT',
+          datasetIndices: temperatureDatasets.map((d) => d.index),
+          datasetLabels: temperatureDatasets.map(datasetLabel),
+          colorOffset: 3,
+          yMin: range.yMin,
+          yMax: range.yMax,
+          x: tempX,
+          y,
+          w: tempWidth,
+          h: plotHeight
+        }));
+      }
+
+      y += plotHeight + gap;
     }
 
-    if (temperatureDatasets.length > 0) {
-      const tempPlot = new PlotWidget({
-        title: 'Temperature Trend',
-        icon: 'PLOT',
-        datasetIndices: temperatureDatasets.map((d) => d.index),
-        datasetLabels: temperatureDatasets.map((d) => d.title + (d.units ? ` (${d.units})` : '')),
-        colorOffset: 3,
-        x: 0,
-        y,
-        w: Math.floor(width * 0.52),
-        h: 260
-      });
-      tempPlot.mount(this._canvas);
-      this._widgets.push(tempPlot);
-    }
+    let cursorX = 0;
+    let cursorY = y;
+    let rowH = 0;
+    const addFlowWidget = (factory, preferredWidth, height) => {
+      const w = Math.min(width, preferredWidth);
+      if (cursorX > 0 && cursorX + w > width) {
+        cursorX = 0;
+        cursorY += rowH + gap;
+        rowH = 0;
+      }
+      mountWidget(factory({ x: cursorX, y: cursorY, w, h: height }));
+      cursorX += w + gap;
+      rowH = Math.max(rowH, height);
+    };
+    const finishFlow = () => {
+      if (rowH > 0) {
+        y = cursorY + rowH + gap;
+        cursorX = 0;
+        cursorY = y;
+        rowH = 0;
+      }
+    };
 
-    let gx = temperatureDatasets.length > 0 ? Math.floor(width * 0.52) + 8 : 0;
-    const gaugeWidth = temperatureDatasets.length > 0
-      ? Math.max(320, width - gx)
-      : Math.floor(width / 3);
+    const gaugeWidth = Math.max(260, Math.floor((width - gap * 2) / 3));
     gaugeDatasets.forEach((ds, i) => {
-      const gauge = new GaugeWidget({
+      addFlowWidget(({ x, y: widgetY, w, h }) => new GaugeWidget({
         title: ds.title,
         datasetIndex: ds.index,
         min: ds.min,
         max: ds.max,
         units: ds.units,
         colorIdx: i,
-        x: gx,
-        y,
-        w: gaugeWidth,
-        h: 260
-      });
-      gauge.mount(this._canvas);
-      this._widgets.push(gauge);
-      gx += gaugeWidth;
-      if (gx + gaugeWidth > width) {
-        gx = 0;
-        y += 268;
-      }
+        x,
+        y: widgetY,
+        w,
+        h
+      }), gaugeWidth, 260);
     });
-    if (gx > 0) y += 268;
+
+    if (barDatasets.length > 0) {
+      addFlowWidget(({ x, y: widgetY, w, h }) => new BarWidget({
+        title: 'Bar Indicators',
+        icon: 'BAR',
+        datasets: barDatasets,
+        x,
+        y: widgetY,
+        w,
+        h
+      }), Math.max(320, Math.floor((width - gap) / 2)), 260);
+    }
+
+    compassDatasets.forEach((ds) => {
+      addFlowWidget(({ x, y: widgetY, w, h }) => new CompassWidget({
+        title: ds.title,
+        datasetIndex: ds.index,
+        x,
+        y: widgetY,
+        w,
+        h
+      }), Math.max(260, Math.floor((width - gap * 2) / 3)), 260);
+    });
+
+    if (ledDatasets.length > 0) {
+      addFlowWidget(({ x, y: widgetY, w, h }) => new LedWidget({
+        title: 'LED Indicators',
+        icon: 'LED',
+        datasets: ledDatasets,
+        x,
+        y: widgetY,
+        w,
+        h
+      }), Math.max(320, Math.floor((width - gap) / 2)), 220);
+    }
+
+    if (fftDatasets.length > 0) {
+      addFlowWidget(({ x, y: widgetY, w, h }) => new FftWidget({
+        title: 'FFT',
+        icon: 'FFT',
+        datasets: fftDatasets,
+        x,
+        y: widgetY,
+        w,
+        h
+      }), width, 280);
+    }
+
+    finishFlow();
 
     if (datasets.length > 0) {
       const dg = new DataGridWidget({
@@ -363,6 +480,10 @@ export class Dashboard {
         return new BarWidget(config);
       case 'Compass':
         return new CompassWidget(config);
+      case 'LED':
+        return new LedWidget(config);
+      case 'FFT':
+        return new FftWidget(config);
       case 'DataGrid':
         return new DataGridWidget(config);
       case 'Accel':

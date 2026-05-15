@@ -81,6 +81,7 @@ export class GaugeWidget extends WidgetBase {
     const needleColor = this._theme('--gauge-needle', '#e2e8f0');
     const centerColor = this._theme('--gauge-center', '#f8fafc');
     const scaleText = this._theme('--gauge-scale-text', '#94a3b8');
+    const uiFont = this._theme('--font-sans', 'Helvetica, Arial, "Microsoft YaHei", sans-serif');
 
     // Track
     ctx.beginPath();
@@ -115,7 +116,7 @@ export class GaugeWidget extends WidgetBase {
     }
 
     ctx.fillStyle = scaleText;
-    ctx.font = "500 12px Consolas, 'Courier New', monospace";
+    ctx.font = `500 12px ${uiFont}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     const labelValues = [this._min, (this._min + this._max) / 2, this._max];

@@ -99,7 +99,8 @@ class AppState {
       separator: ',',
       startDelimiter: '',
       endDelimiter: '\\n',
-      frameDetection: 'EndDelimiterOnly'
+      frameDetection: 'EndDelimiterOnly',
+      hexadecimalDelimiters: false
     };
 
     this._loadSettings();
