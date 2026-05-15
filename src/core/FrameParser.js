@@ -402,6 +402,7 @@ export class FrameParser {
 
     if (frameDetection === 'StartAndEndDelimiter') {
       if (!startDel.length || !endDel.length) return;
+      if (this._parseWithFixedHexFrameLength(startDel, endDel)) return;
 
       let startPos = this._indexOfBytes(this._buffer, startDel);
       while (startPos !== -1) {
@@ -428,6 +429,82 @@ export class FrameParser {
       this._parseFrameContent(this._bytesToHex(this._buffer));
       this._buffer = new Uint8Array(0);
     }
+  }
+
+  _projectProtocolFieldByteLength(type) {
+    const normalized = String(type || '').toLowerCase();
+    if (normalized.endsWith('8')) return 1;
+    if (normalized.endsWith('16')) return 2;
+    if (normalized.endsWith('24')) return 3;
+    if (normalized.endsWith('32')) return 4;
+    if (normalized.endsWith('64')) return 8;
+    return 0;
+  }
+
+  _projectFixedContentLength() {
+    const fields = appState.project?.protocolFields;
+    if (!Array.isArray(fields) || !fields.length) return 0;
+
+    let maxEnd = 0;
+    for (const field of fields) {
+      const offset = Number(field.offset);
+      const count = Math.max(1, Number(field.count) || 1);
+      const byteLength = this._projectProtocolFieldByteLength(field.type);
+      if (!Number.isFinite(offset) || offset < 0 || byteLength <= 0) return 0;
+      maxEnd = Math.max(maxEnd, offset + (count * byteLength));
+    }
+
+    return maxEnd;
+  }
+
+  _bytesEqualAt(buffer, pattern, offset) {
+    if (!pattern?.length || offset < 0 || offset + pattern.length > buffer.length) return false;
+    for (let i = 0; i < pattern.length; i += 1) {
+      if (buffer[offset + i] !== pattern[i]) return false;
+    }
+    return true;
+  }
+
+  _parseWithFixedHexFrameLength(startDel, endDel) {
+    const contentLength = this._projectFixedContentLength();
+    if (contentLength <= 0) return false;
+
+    let startPos = this._indexOfBytes(this._buffer, startDel);
+    while (startPos !== -1) {
+      if (startPos > 0) {
+        this._buffer = this._buffer.slice(startPos);
+        startPos = 0;
+      }
+
+      const endPos = startDel.length + contentLength;
+      const requiredLength = endPos + endDel.length;
+      if (this._buffer.length < requiredLength) return true;
+
+      if (this._bytesEqualAt(this._buffer, endDel, endPos)) {
+        const content = this._buffer.slice(startDel.length, endPos);
+        this._buffer = this._buffer.slice(requiredLength);
+        if (content.length) this._parseFrameContent(this._bytesToHex(content));
+        startPos = this._indexOfBytes(this._buffer, startDel);
+        continue;
+      }
+
+      const nextStart = this._indexOfBytes(this._buffer, startDel, 1);
+      if (nextStart === -1) {
+        const keep = Math.max(0, startDel.length - 1);
+        this._buffer = keep > 0 ? this._buffer.slice(-keep) : new Uint8Array(0);
+        return true;
+      }
+
+      this._buffer = this._buffer.slice(nextStart);
+      startPos = 0;
+    }
+
+    if (this._buffer.length > startDel.length) {
+      const keep = Math.max(0, startDel.length - 1);
+      this._buffer = keep > 0 ? this._buffer.slice(-keep) : new Uint8Array(0);
+    }
+
+    return true;
   }
 
   _parseFrameContent(content, separator = appState.frameConfig.separator || ',') {

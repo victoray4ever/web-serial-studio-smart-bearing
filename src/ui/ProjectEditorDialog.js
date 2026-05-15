@@ -95,6 +95,39 @@ function getLabels(locale) {
 const GROUP_WIDGETS = ['DataGrid', 'MultiPlot', 'Plot', 'Bar', 'Gauge', 'Gauges', 'Compass', 'Accelerometer'];
 const DATASET_WIDGETS = ['Bar', 'Gauge', 'Plot', 'Compass', 'DataGrid'];
 const FRAME_DETECTIONS = ['EndDelimiterOnly', 'StartAndEndDelimiter', 'NoDelimiters'];
+const FIELD_TYPES = ['uint8', 'int8', 'uint16', 'int16', 'uint24', 'int24', 'uint32', 'int32', 'float32', 'float64'];
+const BYTE_ORDERS = ['LE', 'BE'];
+
+function extendProtocolLabels(labels, locale) {
+  const zh = locale === 'zh-CN';
+  return {
+    ...labels,
+    fieldEditor: zh ? '\u5b57\u6bb5\u7f16\u8f91\u5668' : 'Field Editor',
+    formulaEditor: zh ? '\u516c\u5f0f\u7f16\u8f91\u5668' : 'Formula Editor',
+    displayEditor: zh ? '\u663e\u793a\u7f16\u8f91\u5668' : 'Display Editor',
+    sourceField: zh ? '\u6765\u6e90\u5b57\u6bb5' : 'Source Field',
+    formula: zh ? '\u6362\u7b97\u516c\u5f0f' : 'Formula',
+    formulaHelp: zh
+      ? '\u53ef\u4f7f\u7528 raw\u3001fields\u3001bytes\u3001Math\u3001index\u3002\u793a\u4f8b\uff1araw * 2.5 / 8388608\u3002'
+      : 'Use raw, fields, bytes, Math and index. Example: raw * 2.5 / 8388608.',
+    fieldHelp: zh
+      ? '\u6309\u5b57\u8282\u504f\u79fb\u5b9a\u4e49\u6570\u636e\u5e27\u5b57\u6bb5\uff0c\u5e94\u7528\u65f6\u4f1a\u81ea\u52a8\u751f\u6210\u89e3\u6790\u51fd\u6570\u5e76\u5c06\u7ed3\u679c\u4f20\u7ed9\u6570\u636e\u96c6\u516c\u5f0f\u3002'
+      : 'Define payload fields by byte offset. The generated parser reads these fields and feeds dataset formulas.',
+    addField: zh ? '\u6dfb\u52a0\u5b57\u6bb5' : 'Add Field',
+    openProject: zh ? '\u6253\u5f00\u9879\u76ee' : 'Open Project',
+    saveProject: zh ? '\u4fdd\u5b58\u9879\u76ee' : 'Save Project',
+    projectLoaded: zh ? '\u9879\u76ee\u5df2\u8f7d\u5165\u7f16\u8f91\u5668' : 'Project loaded into editor',
+    projectSaved: zh ? '\u9879\u76ee\u5df2\u4fdd\u5b58' : 'Project saved',
+    hexDelimiters: zh ? '\u5341\u516d\u8fdb\u5236\u5e27\u5934/\u5e27\u5c3e' : 'Hex Delimiters',
+    fieldName: zh ? '\u540d\u79f0' : 'Name',
+    fieldType: zh ? '\u7c7b\u578b' : 'Type',
+    fieldOffset: zh ? '\u504f\u79fb' : 'Offset',
+    fieldCount: zh ? '\u6570\u91cf' : 'Count',
+    fieldEndian: zh ? '\u5b57\u8282\u5e8f' : 'Endian',
+    noFields: zh ? '\u5c1a\u672a\u5b9a\u4e49\u5b57\u6bb5' : 'No fields defined yet.',
+    none: zh ? '\u65e0' : 'None'
+  };
+}
 
 export class ProjectEditorDialog {
   constructor(modalRoot, projectModel, options = {}) {
@@ -126,6 +159,8 @@ export class ProjectEditorDialog {
         </div>
         <div class="modal-body" id="project-editor-body">${this._renderBody()}</div>
         <div class="modal-footer">
+          <button class="btn" id="project-editor-open">${this._labels.openProject}</button>
+          <button class="btn" id="project-editor-save">${this._labels.saveProject}</button>
           <button class="btn" id="project-editor-default">${this._labels.loadDefault}</button>
           <button class="btn" id="project-editor-cancel">${t('common.close')}</button>
           <button class="btn btn-primary" id="project-editor-apply">${this._labels.apply}</button>
@@ -148,7 +183,7 @@ export class ProjectEditorDialog {
   }
 
   get _labels() {
-    return getLabels(appState.locale);
+    return extendProtocolLabels(getLabels(appState.locale), appState.locale);
   }
 
   _bindStaticEvents() {
@@ -158,6 +193,8 @@ export class ProjectEditorDialog {
 
     this._el.querySelector('#project-editor-close')?.addEventListener('click', () => this.close());
     this._el.querySelector('#project-editor-cancel')?.addEventListener('click', () => this.close());
+    this._el.querySelector('#project-editor-open')?.addEventListener('click', () => this._openProjectFile());
+    this._el.querySelector('#project-editor-save')?.addEventListener('click', () => this._saveProjectFile());
     this._el.querySelector('#project-editor-default')?.addEventListener('click', () => {
       this._draft = cloneProject(defaultProject());
       this._selected = { type: 'project' };
@@ -165,7 +202,9 @@ export class ProjectEditorDialog {
     });
     this._el.querySelector('#project-editor-apply')?.addEventListener('click', () => {
       try {
-        this._onApply(cloneProject(this._draft));
+        const project = cloneProject(this._draft);
+        this._prepareProjectForApply(project);
+        this._onApply(project);
         this.close();
         eventBus.emit('toast', { type: 'success', message: this._labels.projectApplied });
       } catch (error) {
@@ -181,6 +220,46 @@ export class ProjectEditorDialog {
     };
 
     document.addEventListener('keydown', this._onKeyDown);
+  }
+
+  _openProjectFile() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.addEventListener('change', (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (readerEvent) => {
+        try {
+          const loaded = JSON.parse(String(readerEvent.target?.result || '{}'));
+          this._draft = cloneProject(loaded);
+          if (!Array.isArray(this._draft.groups)) this._draft.groups = [];
+          if (!Array.isArray(this._draft.protocolFields)) this._draft.protocolFields = [];
+          this._selected = { type: 'project' };
+          this._refreshBody();
+          eventBus.emit('toast', { type: 'success', message: this._labels.projectLoaded });
+        } catch (error) {
+          eventBus.emit('toast', { type: 'error', message: error?.message || this._labels.invalidProject });
+        }
+      };
+      reader.readAsText(file);
+    });
+    input.click();
+  }
+
+  _saveProjectFile() {
+    const project = cloneProject(this._draft);
+    this._prepareProjectForApply(project);
+    const json = JSON.stringify(project, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const a = document.createElement('a');
+    const title = String(project.title || 'project').replace(/[\\/:*?"<>|]+/g, '-').trim() || 'project';
+    a.href = URL.createObjectURL(blob);
+    a.download = `${title}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    eventBus.emit('toast', { type: 'success', message: this._labels.projectSaved });
   }
 
   _refreshBody() {
@@ -226,6 +305,8 @@ export class ProjectEditorDialog {
         index: group.datasets.length,
         units: '',
         widget: 'Bar',
+        sourceField: '',
+        formula: 'raw',
         min: 0,
         max: 100,
         alarm: 0,
@@ -265,6 +346,7 @@ export class ProjectEditorDialog {
     });
 
     this._bindFormFields();
+    this._bindProtocolEditorEvents();
   }
 
   _bindFormFields() {
@@ -307,6 +389,46 @@ export class ProjectEditorDialog {
     });
   }
 
+  _bindProtocolEditorEvents() {
+    this._el?.querySelector('#protocol-field-add')?.addEventListener('click', () => {
+      if (!Array.isArray(this._draft.protocolFields)) this._draft.protocolFields = [];
+      const index = this._draft.protocolFields.length;
+      this._draft.protocolFields.push({
+        name: `field${index + 1}`,
+        type: 'uint16',
+        offset: 0,
+        count: 1,
+        endian: 'LE'
+      });
+      this._refreshBody();
+    });
+
+    this._el?.querySelectorAll('[data-protocol-field]').forEach((node) => {
+      const index = Number(node.dataset.index);
+      const field = node.dataset.protocolField;
+      if (!Number.isInteger(index) || !field) return;
+
+      node.addEventListener(node.tagName === 'SELECT' ? 'change' : 'input', () => {
+        const item = this._draft.protocolFields?.[index];
+        if (!item) return;
+        if (field === 'offset' || field === 'count') {
+          item[field] = Math.max(field === 'count' ? 1 : 0, Number(node.value) || 0);
+        } else {
+          item[field] = node.value;
+        }
+      });
+    });
+
+    this._el?.querySelectorAll('[data-protocol-remove]').forEach((node) => {
+      node.addEventListener('click', () => {
+        const index = Number(node.dataset.protocolRemove);
+        if (!Number.isInteger(index)) return;
+        this._draft.protocolFields?.splice(index, 1);
+        this._refreshBody();
+      });
+    });
+  }
+
   _resolveGroupIndex() {
     if (this._selected.type === 'group' || this._selected.type === 'dataset') {
       const groupIndex = Number(this._selected.groupIndex);
@@ -331,6 +453,126 @@ export class ProjectEditorDialog {
         dataset.index = index;
       }
     });
+  }
+
+  _prepareProjectForApply(project) {
+    const fields = Array.isArray(project.protocolFields) ? project.protocolFields : [];
+    const datasets = (project.groups || []).flatMap((group) => group.datasets || []);
+    const formulaDatasets = datasets.filter((dataset) => dataset.sourceField && dataset.formula);
+    if (!fields.length || !formulaDatasets.length) return;
+
+    const parserCode = this._generateParserCode(project);
+    project.frameParserCode = parserCode;
+    project.frameParser = parserCode;
+    project.frameParserLanguage = 0;
+    if (!Array.isArray(project.sources)) project.sources = [];
+    if (!project.sources.length) {
+      project.sources.push({ title: project.title || 'Source 1', sourceId: 0, frameParserLanguage: 0 });
+    }
+    project.sources[0] = {
+      ...project.sources[0],
+      title: project.sources[0].title || project.title || 'Source 1',
+      sourceId: project.sources[0].sourceId ?? 0,
+      frameParserLanguage: 0,
+      frameParserCode: parserCode
+    };
+  }
+
+  _generateParserCode(project) {
+    const fields = (project.protocolFields || []).map((field) => ({
+      name: String(field.name || '') || 'field',
+      type: field.type || 'uint16',
+      offset: Math.max(0, Number(field.offset) || 0),
+      count: Math.max(1, Number(field.count) || 1),
+      endian: field.endian === 'BE' ? 'BE' : 'LE'
+    }));
+    const datasets = (project.groups || [])
+      .flatMap((group) => group.datasets || [])
+      .filter((dataset) => dataset.sourceField && dataset.formula)
+      .map((dataset) => ({
+        index: Number(dataset.index) || 0,
+        title: dataset.title || `Dataset ${Number(dataset.index) || 0}`,
+        sourceField: dataset.sourceField,
+        formula: dataset.formula || 'raw'
+      }));
+
+    return `function parse(frame) {
+  const text = String(frame || '');
+  const cleanHex = text.replace(/[^0-9a-f]/gi, '');
+  const bytes = [];
+  if (cleanHex.length >= 2 && cleanHex.length % 2 === 0) {
+    for (let i = 0; i < cleanHex.length; i += 2) {
+      bytes.push(parseInt(cleanHex.slice(i, i + 2), 16));
+    }
+  } else {
+    for (let i = 0; i < text.length; i += 1) bytes.push(text.charCodeAt(i) & 0xFF);
+  }
+
+  const fieldDefs = ${JSON.stringify(fields, null, 2)};
+  const datasetDefs = ${JSON.stringify(datasets, null, 2)};
+  const byteLength = (type) => {
+    if (type.endsWith('8')) return 1;
+    if (type.endsWith('16')) return 2;
+    if (type.endsWith('24')) return 3;
+    if (type.endsWith('32')) return 4;
+    if (type.endsWith('64')) return 8;
+    return 1;
+  };
+  const requiredLength = fieldDefs.reduce((max, def) => {
+    return Math.max(max, def.offset + (Math.max(1, def.count || 1) * byteLength(def.type)));
+  }, 0);
+  if (bytes.length < requiredLength) return [];
+  const readInt = (offset, length, signed, endian) => {
+    let value = 0;
+    if (endian === 'LE') {
+      for (let i = 0; i < length; i += 1) value += (bytes[offset + i] || 0) * Math.pow(2, 8 * i);
+    } else {
+      for (let i = 0; i < length; i += 1) value = (value * 256) + (bytes[offset + i] || 0);
+    }
+    if (signed) {
+      const signBit = Math.pow(2, (length * 8) - 1);
+      const full = Math.pow(2, length * 8);
+      if (value >= signBit) value -= full;
+    }
+    return value;
+  };
+  const readOne = (def, offset) => {
+    const length = byteLength(def.type);
+    if (def.type === 'float32' || def.type === 'float64') {
+      const buffer = new ArrayBuffer(length);
+      const view = new DataView(buffer);
+      for (let i = 0; i < length; i += 1) view.setUint8(i, bytes[offset + i] || 0);
+      return def.type === 'float32'
+        ? view.getFloat32(0, def.endian === 'LE')
+        : view.getFloat64(0, def.endian === 'LE');
+    }
+    return readInt(offset, length, def.type.startsWith('int'), def.endian);
+  };
+  const fields = {};
+  fieldDefs.forEach((def) => {
+    const length = byteLength(def.type);
+    const values = [];
+    for (let i = 0; i < def.count; i += 1) values.push(readOne(def, def.offset + i * length));
+    fields[def.name] = def.count > 1 ? values : values[0];
+  });
+  const datasets = datasetDefs.map((def) => {
+    const raw = fields[def.sourceField];
+    const applyFormula = (item, index) => {
+      try {
+        return Function('raw', 'fields', 'bytes', 'Math', 'index', '"use strict"; return (' + def.formula + ');')(item, fields, bytes, Math, index);
+      } catch (error) {
+        return NaN;
+      }
+    };
+    const result = Array.isArray(raw) ? raw.map((item, index) => applyFormula(item, index)) : applyFormula(raw, 0);
+    const value = Array.isArray(result) ? result[result.length - 1] : result;
+    const dataset = { index: def.index, title: def.title, value };
+    if (Array.isArray(result)) dataset.buffer = result;
+    return dataset;
+  });
+  return { title: ${JSON.stringify(project.title || 'Project Data')}, datasets };
+}
+`;
   }
 
   _renderBody() {
@@ -404,8 +646,10 @@ export class ProjectEditorDialog {
             ${this._renderSelectField(this._labels.frameDetection, 'frameDetection', selected.frameDetection || 'EndDelimiterOnly', FRAME_DETECTIONS)}
             ${this._renderTextField(this._labels.frameStart, 'frameStart', selected.frameStart || '')}
             ${this._renderTextField(this._labels.frameEnd, 'frameEnd', selected.frameEnd || '\\n')}
+            ${this._renderCheckboxField(this._labels.hexDelimiters, 'hexadecimalDelimiters', !!selected.hexadecimalDelimiters)}
           </div>
-        </div>`;
+        </div>
+        ${this._renderFieldEditor()}`;
     }
 
     if (this._selected.type === 'group') {
@@ -421,7 +665,17 @@ export class ProjectEditorDialog {
 
     return `
       <div class="editor-form-section">
-        <div class="editor-form-section-title">${this._labels.datasetSettings}</div>
+        <div class="editor-form-section-title">${this._labels.formulaEditor}</div>
+        <div class="editor-form-grid">
+          ${this._renderFieldSelect(this._labels.sourceField, 'sourceField', selected.sourceField || '')}
+        </div>
+        ${this._renderTextAreaField(this._labels.formula, 'formula', selected.formula || 'raw')}
+        <div style="font-size:var(--font-size-xs);color:var(--text-muted);line-height:1.5">
+          ${this._labels.formulaHelp}
+        </div>
+      </div>
+      <div class="editor-form-section">
+        <div class="editor-form-section-title">${this._labels.displayEditor}</div>
         <div class="editor-form-grid">
           ${this._renderTextField(this._labels.titleField, 'title', selected.title || '', true)}
           ${this._renderNumberField(this._labels.index, 'index', selected.index ?? 0)}
@@ -453,6 +707,14 @@ export class ProjectEditorDialog {
       </div>`;
   }
 
+  _renderTextAreaField(label, field, value) {
+    return `
+      <div class="form-row">
+        <div class="form-label">${label}</div>
+        <textarea class="form-input" data-field="${field}" data-kind="string" style="min-height:72px;resize:vertical;font-family:var(--font-mono);line-height:1.45">${this._escape(value)}</textarea>
+      </div>`;
+  }
+
   _renderNumberField(label, field, value) {
     return `
       <div class="form-row">
@@ -469,6 +731,77 @@ export class ProjectEditorDialog {
           ${options.map((option) => `<option value="${this._escapeAttr(option)}" ${option === value ? 'selected' : ''}>${this._escape(option)}</option>`).join('')}
         </select>
       </div>`;
+  }
+
+  _renderFieldSelect(label, field, value) {
+    const fields = Array.isArray(this._draft.protocolFields) ? this._draft.protocolFields : [];
+    return `
+      <div class="form-row">
+        <div class="form-label">${label}</div>
+        <select class="form-select" data-field="${field}" data-kind="string">
+          <option value="">${this._labels.none}</option>
+          ${fields.map((item) => {
+            const name = item.name || '';
+            return `<option value="${this._escapeAttr(name)}" ${name === value ? 'selected' : ''}>${this._escape(name)}</option>`;
+          }).join('')}
+        </select>
+      </div>`;
+  }
+
+  _renderFieldEditor() {
+    const fields = Array.isArray(this._draft.protocolFields) ? this._draft.protocolFields : [];
+    return `
+      <div class="editor-form-section">
+        <div class="editor-form-section-title">${this._labels.fieldEditor}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <div style="font-size:var(--font-size-xs);color:var(--text-muted);line-height:1.5">
+            ${this._labels.fieldHelp}
+          </div>
+          <button class="btn" id="protocol-field-add" type="button">${this._labels.addField}</button>
+        </div>
+        <div style="overflow:auto;border:1px solid var(--border-subtle);border-radius:var(--radius-md)">
+          <table class="protocol-field-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>${this._labels.fieldName}</th>
+                <th>${this._labels.fieldType}</th>
+                <th>${this._labels.fieldOffset}</th>
+                <th>${this._labels.fieldCount}</th>
+                <th>${this._labels.fieldEndian}</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${fields.length ? fields.map((field, index) => this._renderProtocolFieldRow(field, index)).join('') : `
+                <tr><td colspan="7" style="color:var(--text-muted);text-align:center;padding:14px">${this._labels.noFields}</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+  }
+
+  _renderProtocolFieldRow(field, index) {
+    const type = field.type || 'uint16';
+    const endian = field.endian || 'LE';
+    return `
+      <tr>
+        <td class="protocol-field-index">${index}</td>
+        <td><input class="form-input" data-protocol-field="name" data-index="${index}" value="${this._escapeAttr(field.name || `field${index + 1}`)}"></td>
+        <td>
+          <select class="form-select" data-protocol-field="type" data-index="${index}">
+            ${FIELD_TYPES.map((option) => `<option value="${option}" ${option === type ? 'selected' : ''}>${option}</option>`).join('')}
+          </select>
+        </td>
+        <td><input class="form-input" type="number" min="0" data-protocol-field="offset" data-index="${index}" value="${Number(field.offset) || 0}"></td>
+        <td><input class="form-input" type="number" min="1" data-protocol-field="count" data-index="${index}" value="${Math.max(1, Number(field.count) || 1)}"></td>
+        <td>
+          <select class="form-select" data-protocol-field="endian" data-index="${index}">
+            ${BYTE_ORDERS.map((option) => `<option value="${option}" ${option === endian ? 'selected' : ''}>${option}</option>`).join('')}
+          </select>
+        </td>
+        <td><button class="btn" type="button" data-protocol-remove="${index}">-</button></td>
+      </tr>`;
   }
 
   _renderCheckboxField(label, field, checked) {

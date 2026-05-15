@@ -9,6 +9,7 @@ export const defaultProject = () => ({
   frameStart: '',
   frameEnd: '\\n',
   frameDetection: 'EndDelimiterOnly',
+  protocolFields: [],
   frameParser: "function parse(frame) {\n  return frame.split(',').map(Number);\n}\n",
   groups: [
     {
@@ -77,6 +78,8 @@ export class ProjectModel {
       index: idx,
       units: '',
       widget: 'Bar',
+      sourceField: '',
+      formula: 'raw',
       min: 0,
       max: 100,
       alarm: 0,
@@ -117,6 +120,7 @@ export class ProjectModel {
       frameEnd: data.frameEnd || '\\n',
       frameDetection: data.frameDetection || 'EndDelimiterOnly',
       hexadecimalDelimiters: data.hexadecimalDelimiters ?? false,
+      protocolFields: Array.isArray(data.protocolFields) ? data.protocolFields : [],
       frameParser: data.frameParser || frameParserCode,
       frameParserCode,
       frameParserLanguage: data.frameParserLanguage ?? sources[0]?.frameParserLanguage ?? 0,
@@ -145,7 +149,9 @@ export class ProjectModel {
               graph: d.graph ?? plot,
               bar: d.bar ?? groupWidget === 'Bar',
               gauge: d.gauge ?? groupWidget === 'Gauges',
-              compass: d.compass ?? groupWidget === 'Compass'
+              compass: d.compass ?? groupWidget === 'Compass',
+              sourceField: d.sourceField || '',
+              formula: d.formula || ''
             };
           })
         };
