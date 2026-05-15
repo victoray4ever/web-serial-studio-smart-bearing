@@ -116,8 +116,8 @@
   --scrollbar-thumb-hover: rgba(148, 163, 184, 0.25);
 
   /* ── Typography ── */
-  --font-sans: 'Times New Roman', 'SimSun', 'Microsoft YaHei', serif;
-  --font-mono: Consolas, 'Cascadia Mono', 'Courier New', monospace;
+  --font-sans: Helvetica, Arial, 'Microsoft YaHei', '微软雅黑', sans-serif;
+  --font-mono: Helvetica, Arial, 'Microsoft YaHei', '微软雅黑', sans-serif;
   --font-size-xs: 0.75rem;     /* 12px */
   --font-size-sm: 0.8125rem;   /* 13px */
   --font-size-base: 0.875rem;  /* 14px */

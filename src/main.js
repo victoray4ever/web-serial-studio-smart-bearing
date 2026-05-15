@@ -4,13 +4,13 @@
 import { eventBus } from './core/EventBus.js';
 import { appState } from './core/AppState.js';
 import { applyTheme, modeLabel, t } from './core/i18n.js?v=csv-autosave-20260424-1';
-import { ConnectionManager } from './io/ConnectionManager.js?v=protocol-plugin-20260427-1';
-import { DataSimulator } from './io/DataSimulator.js?v=protocol-plugin-20260427-1';
+import { ConnectionManager } from './io/ConnectionManager.js?v=project-parser-worker-20260514-1';
+import { DataSimulator } from './io/DataSimulator.js?v=project-parser-worker-20260514-1';
 import { Toolbar } from './ui/Toolbar.js?v=csv-autosave-20260424-1';
 import { Sidebar } from './ui/Sidebar.js?v=csv-autosave-20260424-1';
-import { Dashboard } from './ui/Dashboard.js?v=font-load-demo-20260513-1';
+import { Dashboard } from './ui/Dashboard.js?v=plot-live-x-fix-20260514-1';
 import { Console } from './ui/Console.js?v=ui-fix-20260424-1';
-import { ProjectModel } from './core/ProjectModel.js?v=font-load-demo-20260513-1';
+import { ProjectModel } from './core/ProjectModel.js?v=project-parser-worker-20260514-1';
 import { PreferencesDialog } from './ui/PreferencesDialog.js?v=csv-autosave-20260424-1';
 import { ProjectEditorDialog } from './ui/ProjectEditorDialog.js?v=editor-fix-20260424-1';
 import { runDocCaptureScenario } from './utils/docCapture.js?v=doc-capture-20260424-1';
@@ -78,9 +78,10 @@ class App {
       separator: project.separator || ',',
       startDelimiter: project.frameStart || '',
       endDelimiter: project.frameEnd || '\\n',
-      frameDetection: project.frameDetection || 'EndDelimiterOnly'
+      frameDetection: project.frameDetection || 'EndDelimiterOnly',
+      hexadecimalDelimiters: project.hexadecimalDelimiters ?? false
     });
-    appState.operationMode = String(project.protocol || '').toLowerCase().startsWith('stm32binary') ? 'STM32Binary' : mode;
+    appState.operationMode = mode;
 
     const tbProject = document.getElementById('tb-project');
     if (tbProject) tbProject.textContent = this._project.title;

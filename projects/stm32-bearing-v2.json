@@ -1,6 +1,6 @@
 {
   "title": "STM32 Bearing Monitoring System V2",
-  "protocol": "STM32BinaryV2",
+  "protocol": "Delimited",
   "separator": ",",
   "frameStart": "5A A5",
   "frameEnd": "DD EE",
@@ -127,7 +127,7 @@
       "hexadecimalDelimiters": true,
       "checksum": "",
       "checksumAlgorithm": "",
-      "frameParserCode": "function parse(frame) {\n  // Web Serial Studio uses the built-in STM32BinaryV2 parser for this project.\n  return frame;\n}\n",
+      "frameParserCode": "function parse(frame) {\n  const bytes = [];\n  for (let i = 0; i < frame.length; i += 2) {\n    const byte = parseInt(frame.slice(i, i + 2), 16);\n    if (!Number.isNaN(byte)) bytes.push(byte);\n  }\n\n  const readSigned24BE = (offset) => {\n    let value = ((bytes[offset] || 0) << 16) | ((bytes[offset + 1] || 0) << 8) | (bytes[offset + 2] || 0);\n    if (value & 0x800000) value -= 0x1000000;\n    return value;\n  };\n  const ads24ToVoltage = (raw) => (raw * 2.5) / 8388608.0;\n  const voltageToStrain = (voltage) => (4 * voltage) / (100 * 2 * 2.5);\n  const ads124S08CodeToTemperature = (code) => {\n    const A = 3.9083e-3;\n    const B = -5.775e-7;\n    const scale = 2.980232e-6;\n    const discriminant = (A * A) - (4 * B * (1 - (code * scale)));\n    if (discriminant < 0) return NaN;\n    return (-A + Math.sqrt(discriminant)) / (2 * B);\n  };\n\n  const strainSamples = 160;\n  const strain1Offset = 10;\n  const strain2Offset = 490;\n  const strain3Offset = 970;\n  const tempOffset = 1450;\n\n  if (bytes.length < tempOffset + 3) return [];\n\n  const strain1 = [];\n  const strain2 = [];\n  const strain3 = [];\n  for (let i = 0; i < strainSamples; i++) {\n    strain1.push(voltageToStrain(ads24ToVoltage(readSigned24BE(strain1Offset + i * 3))));\n    strain2.push(voltageToStrain(ads24ToVoltage(readSigned24BE(strain2Offset + i * 3))));\n    strain3.push(voltageToStrain(ads24ToVoltage(readSigned24BE(strain3Offset + i * 3))));\n  }\n\n  const temperature = ads124S08CodeToTemperature(readSigned24BE(tempOffset));\n\n  return {\n    title: 'STM32 Bearing Data V2',\n    datasets: [\n      { index: 0, title: 'Strain 1', value: strain1[strain1.length - 1], buffer: strain1 },\n      { index: 1, title: 'Strain 2', value: strain2[strain2.length - 1], buffer: strain2 },\n      { index: 2, title: 'Strain 3', value: strain3[strain3.length - 1], buffer: strain3 },\n      { index: 3, title: 'Temperature', value: temperature }\n    ]\n  };\n}\n",
       "connection": {
         "autoReconnect": false,
         "baudRate": 15,
@@ -137,7 +137,8 @@
         "parityIndex": 0,
         "portIndex": 0,
         "stopBitsIndex": 0
-      }
+      },
+      "frameParserLanguage": 0
     }
   ]
 }

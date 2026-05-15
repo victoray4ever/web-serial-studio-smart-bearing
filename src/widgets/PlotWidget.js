@@ -15,11 +15,23 @@ export class PlotWidget extends WidgetBase {
     this._maxPoints = appState.points;
     this._data = this._datasetIndices.map(() => []);
     this._labels = [];
+    this._yMin = Number.isFinite(config.yMin) ? config.yMin : undefined;
+    this._yMax = Number.isFinite(config.yMax) ? config.yMax : undefined;
+    this._manualXScale = false;
+    this._manualYScale = Number.isFinite(this._yMin) || Number.isFinite(this._yMax);
+    this._pendingChartUpdate = false;
+    this._chartUpdateTimer = null;
+    this._lastChartUpdateAt = 0;
+    this._updateIntervalMs = Number.isFinite(config.updateIntervalMs) ? config.updateIntervalMs : 50;
+    this._middlePanState = null;
     this._paused = false;
     this._lastFrameDatasets = [];
     this._chartRetryTimer = null;
     this._frameHandler = (frame) => this._onFrame(frame);
-    this._syncVisibleYScale = () => {
+    this._middlePanMoveHandler = (event) => this._handleMiddlePanMove(event);
+    this._middlePanUpHandler = (event) => this._stopMiddlePan(event);
+    this._syncVisibleScale = () => {
+      this._manualXScale = this._hasFixedXScale();
       this._updateVisibleYScale();
       this._chart?.update('none');
     };
@@ -63,6 +75,11 @@ export class PlotWidget extends WidgetBase {
     const majorGridColor = this._readThemeToken(themeStyles, '--chart-grid-major', 'rgba(148,163,184,0.08)');
     const lineWidth = Number.parseFloat(this._readThemeToken(themeStyles, '--chart-line-width', '2.2')) || 2.2;
     const crosshairColor = this._readThemeToken(themeStyles, '--chart-crosshair', 'rgba(59,130,246,0.18)');
+    const uiFont = this._readThemeToken(
+      themeStyles,
+      '--font-sans',
+      'Helvetica, Arial, "Microsoft YaHei", sans-serif'
+    );
 
     this._chart = new Chart(canvas, {
       type: 'line',
@@ -98,7 +115,7 @@ export class PlotWidget extends WidgetBase {
             display: this._datasetIndices.length > 1,
             labels: {
               color: legendColor,
-              font: { size: 13, family: "'Times New Roman', serif", weight: '600' },
+              font: { size: 13, family: uiFont, weight: '600' },
               usePointStyle: true,
               pointStyle: 'line',
               pointStyleWidth: 30,
@@ -113,8 +130,8 @@ export class PlotWidget extends WidgetBase {
             borderWidth: 1,
             titleColor: themeStyles.getPropertyValue('--chart-tooltip-title').trim() || '#94a3b8',
             bodyColor: themeStyles.getPropertyValue('--chart-tooltip-body').trim() || '#f1f5f9',
-            titleFont: { family: "'Times New Roman', serif", size: 12, weight: '600' },
-            bodyFont: { family: "Consolas, 'Courier New', monospace", size: 12 },
+            titleFont: { family: uiFont, size: 12, weight: '600' },
+            bodyFont: { family: uiFont, size: 12 },
             cornerRadius: 10,
             padding: 10,
             boxPadding: 4,
@@ -132,8 +149,8 @@ export class PlotWidget extends WidgetBase {
               drag: { enabled: true, backgroundColor: crosshairColor },
               mode: 'x'
             },
-            onZoomComplete: this._syncVisibleYScale,
-            onPanComplete: this._syncVisibleYScale
+            onZoomComplete: this._syncVisibleScale,
+            onPanComplete: this._syncVisibleScale
           }
         },
         scales: {
@@ -147,6 +164,8 @@ export class PlotWidget extends WidgetBase {
           },
           y: {
             beginAtZero: false,
+            min: this._yMin,
+            max: this._yMax,
             grid: {
               color: majorGridColor,
               drawTicks: false,
@@ -155,7 +174,7 @@ export class PlotWidget extends WidgetBase {
             },
             ticks: {
               color: tickColor,
-              font: { size: 12, family: "Consolas, 'Courier New', monospace", weight: '500' },
+              font: { size: 12, family: uiFont, weight: '500' },
               maxTicksLimit: 6,
               padding: 8
             },
@@ -163,6 +182,12 @@ export class PlotWidget extends WidgetBase {
           }
         }
       }
+    });
+
+    canvas.addEventListener('wheel', (event) => this._handleWheelScale(event), { passive: false });
+    canvas.addEventListener('mousedown', (event) => this._startMiddlePan(event));
+    canvas.addEventListener('auxclick', (event) => {
+      if (event.button === 1) event.preventDefault();
     });
 
     const actionsEl = this._el.querySelector('.widget-actions');
@@ -201,25 +226,180 @@ export class PlotWidget extends WidgetBase {
     });
 
     const maxLen = Math.max(...this._data.map((d) => d.length));
-    while (this._labels.length < maxLen) this._labels.push('');
+    while (this._labels.length < maxLen) this._labels.push(this._labels.length);
     if (this._labels.length > maxLen) this._labels.splice(0, this._labels.length - maxLen);
 
+    this._scheduleChartUpdate();
+  }
+
+  reset() {
+    this._data.forEach((series) => { series.length = 0; });
+    this._lastFrameDatasets = [];
+    this._labels.length = 0;
     if (this._chart) {
-      this._updateVisibleYScale();
+      if (typeof this._chart.resetZoom === 'function') this._chart.resetZoom();
+      this._chart.data.labels = this._labels;
+      this._chart.data.datasets.forEach((dataset, index) => {
+        dataset.data = this._data[index];
+      });
+      this._manualXScale = false;
+      this._manualYScale = Number.isFinite(this._yMin) || Number.isFinite(this._yMax);
+      this._chart.options.scales.x.min = undefined;
+      this._chart.options.scales.x.max = undefined;
+      this._chart.options.scales.y.min = this._yMin;
+      this._chart.options.scales.y.max = this._yMax;
+      this._updatePointVisibility();
       this._chart.update('none');
     }
   }
 
-  reset() {
-    this._data = this._datasetIndices.map(() => []);
-    this._lastFrameDatasets = [];
-    this._labels = [];
-    if (this._chart) {
-      if (typeof this._chart.resetZoom === 'function') this._chart.resetZoom();
-      this._chart.options.scales.y.min = undefined;
-      this._chart.options.scales.y.max = undefined;
-      this._chart.update('none');
+  _scheduleChartUpdate() {
+    if (!this._chart || this._pendingChartUpdate) return;
+    this._pendingChartUpdate = true;
+    const now = performance.now();
+    const delay = Math.max(0, this._updateIntervalMs - (now - this._lastChartUpdateAt));
+    const run = () => {
+      this._chartUpdateTimer = null;
+      requestAnimationFrame(() => {
+        this._pendingChartUpdate = false;
+        if (!this._chart || this._destroyed) return;
+        this._lastChartUpdateAt = performance.now();
+        this._updateLiveXScale();
+        this._updateVisibleYScale();
+        this._updatePointVisibility();
+        this._chart.update('none');
+      });
+    };
+
+    if (delay > 0) {
+      this._chartUpdateTimer = setTimeout(run, delay);
+    } else {
+      run();
     }
+  }
+
+  _updatePointVisibility() {
+    if (!this._chart) return;
+    this._chart.data.datasets.forEach((dataset, index) => {
+      const length = this._data[index]?.length || 0;
+      dataset.pointRadius = length < 2 ? 2 : 0;
+      dataset.tension = length > 1200 ? 0 : 0.22;
+    });
+  }
+
+  _hasFixedXScale() {
+    const xOptions = this._chart?.options?.scales?.x;
+    return Number.isFinite(xOptions?.min) || Number.isFinite(xOptions?.max);
+  }
+
+  _updateLiveXScale() {
+    if (this._manualXScale || !this._chart) return;
+    const xOptions = this._chart.options?.scales?.x;
+    if (!xOptions) return;
+    xOptions.min = undefined;
+    xOptions.max = undefined;
+  }
+
+  _handleWheelScale(event) {
+    if (!this._chart || this._destroyed) return;
+    if (event.ctrlKey || event.metaKey) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    const yScale = this._chart.scales?.y;
+    const yOptions = this._chart.options?.scales?.y;
+    if (!yScale || !yOptions) return;
+
+    const currentMin = Number.isFinite(yOptions.min) ? yOptions.min : yScale.min;
+    const currentMax = Number.isFinite(yOptions.max) ? yOptions.max : yScale.max;
+    if (!Number.isFinite(currentMin) || !Number.isFinite(currentMax) || currentMin === currentMax) return;
+
+    const zoomIn = event.deltaY < 0;
+    const factor = zoomIn ? 0.82 : 1.22;
+    const pointerValue = typeof yScale.getValueForPixel === 'function'
+      ? yScale.getValueForPixel(event.offsetY)
+      : (currentMin + currentMax) / 2;
+    const center = Number.isFinite(pointerValue) ? pointerValue : (currentMin + currentMax) / 2;
+    const nextMin = center - (center - currentMin) * factor;
+    const nextMax = center + (currentMax - center) * factor;
+
+    if (!Number.isFinite(nextMin) || !Number.isFinite(nextMax) || nextMin === nextMax) return;
+    this._manualYScale = true;
+    this._updateLiveXScale();
+    yOptions.min = nextMin;
+    yOptions.max = nextMax;
+    this._chart.update('none');
+  }
+
+  _startMiddlePan(event) {
+    if (event.button !== 1 || !this._chart || this._destroyed) return;
+    const chartArea = this._chart.chartArea;
+    const xScale = this._chart.scales?.x;
+    const yScale = this._chart.scales?.y;
+    const yOptions = this._chart.options?.scales?.y;
+    const xOptions = this._chart.options?.scales?.x;
+    if (!chartArea || !xScale || !yScale || !xOptions || !yOptions) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const fallbackEnd = Math.max(...this._data.map((series) => series.length - 1), 0);
+    const xMin = Number.isFinite(xOptions.min) ? xOptions.min : (Number.isFinite(xScale.min) ? xScale.min : 0);
+    const xMax = Number.isFinite(xOptions.max) ? xOptions.max : (Number.isFinite(xScale.max) ? xScale.max : fallbackEnd);
+    const yMin = Number.isFinite(yOptions.min) ? yOptions.min : yScale.min;
+    const yMax = Number.isFinite(yOptions.max) ? yOptions.max : yScale.max;
+    if (!Number.isFinite(yMin) || !Number.isFinite(yMax) || yMin === yMax) return;
+
+    this._middlePanState = {
+      startX: event.clientX,
+      startY: event.clientY,
+      xMin,
+      xMax: xMax === xMin ? xMin + 1 : xMax,
+      yMin,
+      yMax,
+      width: Math.max(1, chartArea.right - chartArea.left),
+      height: Math.max(1, chartArea.bottom - chartArea.top)
+    };
+
+    document.addEventListener('mousemove', this._middlePanMoveHandler);
+    document.addEventListener('mouseup', this._middlePanUpHandler);
+  }
+
+  _handleMiddlePanMove(event) {
+    if (!this._middlePanState || !this._chart) return;
+    event.preventDefault();
+
+    const state = this._middlePanState;
+    const xOptions = this._chart.options?.scales?.x;
+    const yOptions = this._chart.options?.scales?.y;
+    if (!xOptions || !yOptions) return;
+
+    const dx = event.clientX - state.startX;
+    const dy = event.clientY - state.startY;
+    const xRange = state.xMax - state.xMin;
+    const yRange = state.yMax - state.yMin;
+    const xShift = -(dx / state.width) * xRange;
+    const yShift = (dy / state.height) * yRange;
+
+    if (Math.abs(dx) > 1) {
+      xOptions.min = state.xMin + xShift;
+      xOptions.max = state.xMax + xShift;
+      this._manualXScale = true;
+    } else if (!this._manualXScale) {
+      xOptions.min = undefined;
+      xOptions.max = undefined;
+    }
+    yOptions.min = state.yMin + yShift;
+    yOptions.max = state.yMax + yShift;
+    this._manualYScale = true;
+    this._chart.update('none');
+  }
+
+  _stopMiddlePan(event) {
+    if (event?.button !== undefined && event.button !== 1) return;
+    this._middlePanState = null;
+    document.removeEventListener('mousemove', this._middlePanMoveHandler);
+    document.removeEventListener('mouseup', this._middlePanUpHandler);
   }
 
   _updateVisibleYScale() {
@@ -228,6 +408,7 @@ export class PlotWidget extends WidgetBase {
     const xScale = this._chart.scales?.x;
     const yScale = this._chart.options?.scales?.y;
     if (!xScale || !yScale) return;
+    if (this._manualYScale) return;
 
     const fallbackEnd = Math.max(...this._data.map((series) => series.length - 1), 0);
     const isViewingHistory = Number.isFinite(xScale.max) && xScale.max < fallbackEnd - 2;
@@ -279,6 +460,11 @@ export class PlotWidget extends WidgetBase {
     if (this._chart) {
       this._chart.destroy();
       this._chart = null;
+    }
+    this._stopMiddlePan();
+    if (this._chartUpdateTimer) {
+      clearTimeout(this._chartUpdateTimer);
+      this._chartUpdateTimer = null;
     }
     if (this._chartRetryTimer) {
       clearInterval(this._chartRetryTimer);

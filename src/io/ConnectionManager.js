@@ -4,7 +4,7 @@
 import { eventBus } from '../core/EventBus.js';
 import { appState, BusType, ConnectionState } from '../core/AppState.js';
 import { busLabel, t } from '../core/i18n.js';
-import { FrameParser } from '../core/FrameParser.js?v=protocol-plugin-20260427-1';
+import { FrameParser } from '../core/FrameParser.js?v=project-parser-worker-20260514-1';
 import { SerialDriver } from './SerialDriver.js';
 import { WebSocketDriver } from './WebSocketDriver.js';
 import { MqttDriver } from './MqttDriver.js';
