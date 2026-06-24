@@ -5,7 +5,8 @@ import { eventBus } from './EventBus.js';
 import { appState, OperationMode } from './AppState.js';
 
 export class FrameParser {
-  constructor() {
+  constructor(context = {}) {
+    this._context = context || {};
     this._buffer = new Uint8Array(0);
     this._frameCount = 0;
     this._frameRateCounter = 0;
@@ -18,11 +19,11 @@ export class FrameParser {
 
   startStats() {
     if (this._frameRateTimer) return;
-    this._frameRateCounter = 0;
+    FrameParser._globalFrameRateCounter = 0;
     appState.dataRate = 0;
     this._frameRateTimer = setInterval(() => {
-      appState.dataRate = this._frameRateCounter;
-      this._frameRateCounter = 0;
+      appState.dataRate = FrameParser._globalFrameRateCounter || 0;
+      FrameParser._globalFrameRateCounter = 0;
     }, 1000);
   }
 
@@ -31,7 +32,7 @@ export class FrameParser {
       clearInterval(this._frameRateTimer);
       this._frameRateTimer = null;
     }
-    this._frameRateCounter = 0;
+    FrameParser._globalFrameRateCounter = 0;
     if (resetRate) appState.dataRate = 0;
   }
 
@@ -43,7 +44,8 @@ export class FrameParser {
   /**
    * Feed raw data into parser. Emits 'frame:received' for each complete frame.
    */
-  processData(newData) {
+  processData(newData, meta = {}) {
+    this._lastMeta = meta || {};
     // newData is expected to be Uint8Array from drivers
     if (!(newData instanceof Uint8Array)) {
       if (typeof newData === 'string') {
@@ -66,6 +68,37 @@ export class FrameParser {
     this._parse();
   }
 
+  _operationMode() {
+    return this._context.operationMode || appState.operationMode;
+  }
+
+  _project() {
+    return this._context.project || appState.project || {};
+  }
+
+  _source() {
+    return this._context.source || null;
+  }
+
+  _sourceId() {
+    const source = this._source();
+    return this._context.sourceId ?? this._lastMeta?.sourceId ?? source?.sourceId ?? '';
+  }
+
+  _frameConfig() {
+    const project = this._project();
+    const source = this._source() || {};
+    const parserDef = this._parserDefinition(source.parser || source.parserId || source.frameParserId) || {};
+    const global = appState.frameConfig;
+    return {
+      separator: source.separator ?? parserDef.separator ?? project.separator ?? global.separator ?? ',',
+      startDelimiter: source.startDelimiter ?? source.frameStart ?? parserDef.startDelimiter ?? parserDef.frameStart ?? project.frameStart ?? global.startDelimiter ?? '',
+      endDelimiter: source.endDelimiter ?? source.frameEnd ?? parserDef.endDelimiter ?? parserDef.frameEnd ?? project.frameEnd ?? global.endDelimiter ?? '\\n',
+      frameDetection: source.frameDetection ?? parserDef.frameDetection ?? project.frameDetection ?? global.frameDetection ?? 'EndDelimiterOnly',
+      hexadecimalDelimiters: source.hexadecimalDelimiters ?? parserDef.hexadecimalDelimiters ?? project.hexadecimalDelimiters ?? global.hexadecimalDelimiters ?? false
+    };
+  }
+
   _hexToBytes(hex) {
     if (!hex || hex.length % 2 !== 0) return null;
 
@@ -80,7 +113,7 @@ export class FrameParser {
   }
 
   _parse() {
-    const mode = appState.operationMode;
+    const mode = this._operationMode();
 
     if (mode === OperationMode.DeviceSendsJSON) {
       this._parseJSON();
@@ -94,7 +127,9 @@ export class FrameParser {
   }
 
   _projectProtocol() {
-    return String(appState.project?.protocol || '').trim().toLowerCase();
+    const source = this._source();
+    const parserDef = this._parserDefinition(source?.parser || source?.parserId || source?.frameParserId);
+    return String(source?.protocol || parserDef?.protocol || this._project()?.protocol || '').trim().toLowerCase();
   }
 
   _parseProjectFile() {
@@ -108,11 +143,18 @@ export class FrameParser {
   }
 
   _projectFrameParserCode() {
-    const project = appState.project || {};
-    const firstSource = Array.isArray(project.sources) ? project.sources[0] : null;
+    const project = this._project();
+    const source = this._source();
+    const firstSource = source || (Array.isArray(project.sources) ? project.sources[0] : null);
+    const parserKey = source?.parser || source?.parserId || source?.frameParserId;
+    const parserDef = this._parserDefinition(parserKey);
+    const parserCode = typeof parserDef === 'string'
+      ? parserDef
+      : (parserDef?.frameParserCode || parserDef?.frameParser || parserDef?.code);
     return String(
       firstSource?.frameParserCode ||
       firstSource?.frameParser ||
+      parserCode ||
       project.frameParserCode ||
       project.frameParser ||
       ''
@@ -120,19 +162,33 @@ export class FrameParser {
   }
 
   _projectFrameParserLanguage() {
-    const project = appState.project || {};
-    const firstSource = Array.isArray(project.sources) ? project.sources[0] : null;
-    return firstSource?.frameParserLanguage ?? project.frameParserLanguage ?? 0;
+    const project = this._project();
+    const firstSource = this._source() || (Array.isArray(project.sources) ? project.sources[0] : null);
+    const parserKey = firstSource?.parser || firstSource?.parserId || firstSource?.frameParserId;
+    const parserDef = this._parserDefinition(parserKey);
+    return firstSource?.frameParserLanguage ?? (typeof parserDef === 'object' ? parserDef?.frameParserLanguage : undefined) ?? project.frameParserLanguage ?? 0;
+  }
+
+  _parserDefinition(parserKey) {
+    if (!parserKey) return null;
+    const parsers = this._project()?.parsers;
+    if (Array.isArray(parsers)) {
+      return parsers.find((parser) => (
+        String(parser.id ?? parser.name ?? parser.title ?? '') === String(parserKey)
+      )) || null;
+    }
+    if (parsers && typeof parsers === 'object') return parsers[parserKey] || null;
+    return null;
   }
 
   _hasProjectFrameParser() {
-    if (appState.operationMode !== OperationMode.ProjectFile) return false;
+    if (this._operationMode() !== OperationMode.ProjectFile) return false;
     return this._projectFrameParserCode().length > 0;
   }
 
   _projectParserIndexBase() {
     const indices = [];
-    (appState.project?.groups || []).forEach((group) => {
+    (this._project()?.groups || []).forEach((group) => {
       (group.datasets || []).forEach((dataset) => {
         if (Number.isInteger(dataset.index)) indices.push(dataset.index);
       });
@@ -144,8 +200,11 @@ export class FrameParser {
 
   _projectDatasetByIndex() {
     const map = new Map();
-    (appState.project?.groups || []).forEach((group) => {
+    const sourceId = this._sourceId();
+    (this._project()?.groups || []).forEach((group) => {
       (group.datasets || []).forEach((dataset) => {
+        const datasetSourceId = dataset.sourceId ?? dataset.source ?? group.sourceId ?? group.source;
+        if (sourceId !== '' && datasetSourceId !== undefined && datasetSourceId !== null && datasetSourceId !== '' && String(datasetSourceId) !== String(sourceId)) return;
         if (Number.isInteger(dataset.index)) map.set(dataset.index, dataset);
       });
     });
@@ -209,7 +268,7 @@ export class FrameParser {
       this._terminateProjectParserWorker();
     }, 1000);
 
-    this._projectParserPending.set(id, { raw: content, timeout });
+    this._projectParserPending.set(id, { raw: content, timeout, meta: { ...(this._lastMeta || {}) } });
     this._projectParserWorker.postMessage({
       type: 'parse',
       id,
@@ -233,10 +292,10 @@ export class FrameParser {
     }
 
     if (message.type !== 'parsed') return;
-    this._emitProjectParserResult(message.result, pending?.raw || '');
+    this._emitProjectParserResult(message.result, pending?.raw || '', pending?.meta || {});
   }
 
-  _emitProjectParserResult(result, raw) {
+  _emitProjectParserResult(result, raw, meta = {}) {
     const frames = Array.isArray(result?.frames) ? result.frames : [];
     const indexBase = this._projectParserIndexBase();
     const datasetByIndex = this._projectDatasetByIndex();
@@ -250,6 +309,7 @@ export class FrameParser {
           title: dataset.title || configured?.title || `Channel ${index + 1}`,
           units: dataset.units ?? configured?.units ?? '',
           index,
+          sourceId: this._sourceId(),
           value: typeof dataset.value === 'number' ? dataset.value : parseFloat(dataset.value) || 0,
           ...(Array.isArray(dataset.buffer) ? { buffer: dataset.buffer } : {}),
           ...(Number.isFinite(Number(dataset.sampleRate)) && Number(dataset.sampleRate) > 0
@@ -260,7 +320,10 @@ export class FrameParser {
 
       if (!datasets.length) return;
       this._emitFrame({
-        title: frame.title || appState.project?.title || 'Project Data',
+        title: frame.title || this._source()?.title || this._project()?.title || 'Project Data',
+        sourceId: this._sourceId(),
+        sourceTitle: this._source()?.title || '',
+        topic: meta.topic || this._context.topic || '',
         datasets,
         raw,
         timestamp: Date.now() + frameOffset
@@ -323,6 +386,9 @@ export class FrameParser {
         eventBus.emit('frame:receivedJSON', data);
         this._emitFrame({
           title: data.t || data.title || 'Telemetry',
+          sourceId: this._sourceId(),
+          sourceTitle: this._source()?.title || '',
+          topic: this._lastMeta?.topic || this._context.topic || '',
           groups: data.g || data.groups || [],
           raw: jsonStr,
           timestamp: Date.now()
@@ -337,7 +403,7 @@ export class FrameParser {
   }
 
   _parseWithDelimiters() {
-    const config = appState.frameConfig;
+    const config = this._frameConfig();
     const { startDelimiter, endDelimiter, frameDetection } = config;
 
     if (config.hexadecimalDelimiters) {
@@ -386,7 +452,7 @@ export class FrameParser {
   }
 
   _parseWithHexDelimiters() {
-    const config = appState.frameConfig;
+    const config = this._frameConfig();
     const { startDelimiter, endDelimiter, frameDetection } = config;
     const startDel = this._hexDelimiterToBytes(startDelimiter);
     const endDel = this._hexDelimiterToBytes(endDelimiter);
@@ -445,7 +511,9 @@ export class FrameParser {
   }
 
   _projectFixedContentLength() {
-    const fields = appState.project?.protocolFields;
+    const source = this._source();
+    const parserDef = this._parserDefinition(source?.parser || source?.parserId || source?.frameParserId);
+    const fields = source?.protocolFields || parserDef?.protocolFields || this._project()?.protocolFields;
     if (!Array.isArray(fields) || !fields.length) return 0;
 
     let maxEnd = 0;
@@ -510,7 +578,7 @@ export class FrameParser {
     return true;
   }
 
-  _parseFrameContent(content, separator = appState.frameConfig.separator || ',') {
+  _parseFrameContent(content, separator = this._frameConfig().separator || ',') {
     if (this._hasProjectFrameParser()) {
       this._parseWithProjectParser(content);
       return;
@@ -519,7 +587,7 @@ export class FrameParser {
     this._parseFrameContentAsCSV(content, separator);
   }
 
-  _parseFrameContentAsCSV(content, separator = appState.frameConfig.separator || ',') {
+  _parseFrameContentAsCSV(content, separator = this._frameConfig().separator || ',') {
     const resolvedSeparator = this._resolveDelimiter(separator) || ',';
     const values = content.split(resolvedSeparator).map(v => {
       const n = parseFloat(v.trim());
@@ -528,19 +596,23 @@ export class FrameParser {
 
     this._emitFrame({
       datasets: values.map((v, i) => ({
-        title: `Channel ${i + 1}`,
-        value: typeof v === 'number' ? v : 0,
-        index: i
-      })),
-      raw: content,
+          title: `Channel ${i + 1}`,
+          value: typeof v === 'number' ? v : 0,
+          index: i,
+          sourceId: this._sourceId()
+        })),
+        sourceId: this._sourceId(),
+        sourceTitle: this._source()?.title || '',
+        topic: this._lastMeta?.topic || this._context.topic || '',
+        raw: content,
       timestamp: Date.now()
     });
   }
 
   _emitFrame(frame) {
-    this._frameCount++;
-    this._frameRateCounter++;
-    appState.frameCount = this._frameCount;
+    FrameParser._globalFrameCount = (FrameParser._globalFrameCount || 0) + 1;
+    FrameParser._globalFrameRateCounter = (FrameParser._globalFrameRateCounter || 0) + 1;
+    appState.frameCount = FrameParser._globalFrameCount;
     eventBus.emit('frame:received', frame);
   }
 
@@ -582,5 +654,7 @@ export class FrameParser {
     this._terminateProjectParserWorker();
     this._frameCount = 0;
     this._frameRateCounter = 0;
+    FrameParser._globalFrameCount = 0;
+    FrameParser._globalFrameRateCounter = 0;
   }
 }

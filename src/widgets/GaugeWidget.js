@@ -4,6 +4,7 @@
 import { WidgetBase } from './WidgetBase.js';
 import { eventBus } from '../core/EventBus.js';
 import { getDatasetColor, formatValue } from '../utils/helpers.js';
+import { datasetFromFrame } from './datasetSource.js';
 
 export class GaugeWidget extends WidgetBase {
   constructor(config = {}) {
@@ -14,6 +15,7 @@ export class GaugeWidget extends WidgetBase {
     this._units = config.units || '';
     this._colorIdx = config.colorIdx || 0;
     this._datasetIndex = config.datasetIndex ?? 0;
+    this._datasetRef = { index: this._datasetIndex, sourceId: config.sourceId };
     this._canvas = null;
     this._ctx = null;
     this._valueEl = null;
@@ -44,7 +46,7 @@ export class GaugeWidget extends WidgetBase {
   _subscribe() {
     this._unsubscribe = eventBus.on('frame:received', (frame) => {
       if (this._destroyed) return;
-      const ds = frame.datasets?.[this._datasetIndex];
+      const ds = datasetFromFrame(frame, this._datasetRef, this._datasetIndex);
       if (!ds) return;
       const v = typeof ds.value === 'number' ? ds.value : parseFloat(ds.value) || 0;
       if (v !== this._value) {

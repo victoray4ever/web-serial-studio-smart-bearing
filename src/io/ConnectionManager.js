@@ -2,19 +2,39 @@
  * ConnectionManager — Manages connection lifecycle and routes data
  */
 import { eventBus } from '../core/EventBus.js';
-import { appState, BusType, ConnectionState } from '../core/AppState.js';
+import { appState, BusType, ConnectionState, OperationMode } from '../core/AppState.js';
 import { busLabel, t } from '../core/i18n.js';
-import { FrameParser } from '../core/FrameParser.js?v=fft-analysis-20260525-1';
+import { FrameParser } from '../core/FrameParser.js?v=multi-mqtt-20260618-1';
 import { SerialDriver } from './SerialDriver.js';
 import { WebSocketDriver } from './WebSocketDriver.js';
-import { MqttDriver } from './MqttDriver.js?v=mqtt-check-20260519-1';
-import { UdpDriver } from './UdpDriver.js';
+import { MqttDriver } from './MqttDriver.js?v=multi-mqtt-20260618-1';
+import { UdpDriver } from './UdpDriver.js?v=multi-udp-gateway-routing-20260619-2';
+
+function mqttTopicMatches(filter, topic) {
+  const filterParts = String(filter || '').split('/');
+  const topicParts = String(topic || '').split('/');
+  for (let i = 0; i < filterParts.length; i += 1) {
+    const part = filterParts[i];
+    if (part === '#') return i === filterParts.length - 1;
+    if (part !== '+' && part !== topicParts[i]) return false;
+  }
+  return filterParts.length === topicParts.length;
+}
 
 export class ConnectionManager {
   constructor() {
     this._driver = null;
     this._parser = new FrameParser();
-    this._connectHandler = (data) => this._parser.processData(data);
+    this._mqttParsers = new Map();
+    this._udpParsers = new Map();
+    this._connectHandler = (data) => this._handleDriverData(data);
+    this._statusHandler = (status) => eventBus.emit('gateway:status', status);
+    this._gatewayCommandUnsubscribe = eventBus.on('gateway:command', (command) => {
+      if (appState.busType !== BusType.UDP || !this._driver?.sendControl) return;
+      this._driver.sendControl(command).catch((error) => {
+        eventBus.emit('gateway:status', { type: 'gateway.error', message: error.message || String(error) });
+      });
+    });
     this._errorHandler = (err) => {
       console.error('Driver error:', err);
       eventBus.emit('toast', { type: 'error', message: t('messages.connectionError', { error: err.message || err }) });
@@ -27,12 +47,104 @@ export class ConnectionManager {
 
   get isConnected() { return appState.isConnected; }
 
+  _handleDriverData(data) {
+    if (appState.busType === BusType.MQTT && data && typeof data === 'object' && data.payload) {
+      this._processMqttData(data);
+      return;
+    }
+
+    if (appState.busType === BusType.UDP && data && typeof data === 'object' && data.payload) {
+      this._processUdpData(data);
+      return;
+    }
+
+    this._parser.processData(data);
+  }
+
+  _sourceMatchesSubscription(source, packet) {
+    const sourceId = source?.sourceId;
+    if (packet.sourceId !== undefined && packet.sourceId !== null && packet.sourceId !== '') {
+      return String(sourceId) === String(packet.sourceId);
+    }
+
+    const topic = String(packet.topic || '');
+    const sourceTopic = String(source?.topic || source?.mqttTopic || '');
+    return sourceTopic && mqttTopicMatches(sourceTopic, topic);
+  }
+
+  _sourceForMqttPacket(packet) {
+    const sources = Array.isArray(appState.project?.sources) ? appState.project.sources : [];
+    return sources.find((source) => this._sourceMatchesSubscription(source, packet)) || null;
+  }
+
+  _mqttParserForPacket(packet) {
+    const source = this._sourceForMqttPacket(packet);
+    const sourceId = packet.sourceId ?? source?.sourceId ?? packet.topic ?? 'default';
+    const key = String(sourceId);
+    if (!this._mqttParsers.has(key)) {
+      this._mqttParsers.set(key, new FrameParser({
+        operationMode: OperationMode.ProjectFile,
+        project: appState.project,
+        source,
+        sourceId,
+        topic: packet.topic
+      }));
+    }
+    return this._mqttParsers.get(key);
+  }
+
+  _processMqttData(packet) {
+    const parser = this._mqttParserForPacket(packet);
+    parser.processData(packet.payload, {
+      topic: packet.topic,
+      sourceId: packet.sourceId,
+      subscription: packet.subscription
+    });
+  }
+
+  _sourceForUdpPacket(packet) {
+    const sources = Array.isArray(appState.project?.sources) ? appState.project.sources : [];
+    return sources.find((source) => String(source?.sourceId ?? '') === String(packet.sourceId ?? '')) || null;
+  }
+
+  _udpParserForPacket(packet) {
+    const source = this._sourceForUdpPacket(packet);
+    const sourceId = packet.sourceId ?? source?.sourceId ?? `${packet.sourceIp || 'udp'}:${packet.sourcePort || 0}`;
+    const key = String(sourceId);
+    if (!this._udpParsers.has(key)) {
+      this._udpParsers.set(key, new FrameParser({
+        operationMode: appState.operationMode,
+        project: appState.project,
+        source,
+        sourceId
+      }));
+    }
+    return this._udpParsers.get(key);
+  }
+
+  _processUdpData(packet) {
+    const parser = this._udpParserForPacket(packet);
+    parser.processData(packet.payload, {
+      sourceId: packet.sourceId,
+      sourceIp: packet.sourceIp,
+      sourcePort: packet.sourcePort,
+      sequence: packet.sequence,
+      frameNumber: packet.frameNumber,
+      deviceSequence: packet.deviceSequence,
+      gatewayTimestamp: packet.timestamp
+    });
+  }
+
   async connect() {
     if (appState.isConnected) return;
 
     try {
       appState.connectionState = ConnectionState.Connecting;
       this._parser.reset();
+      this._mqttParsers.forEach((parser) => parser.destroy());
+      this._mqttParsers.clear();
+      this._udpParsers.forEach((parser) => parser.destroy());
+      this._udpParsers.clear();
 
       const bus = appState.busType;
       if (bus === BusType.Serial) {
@@ -53,6 +165,7 @@ export class ConnectionManager {
 
       this._parser.startStats();
       this._driver.on('data', this._connectHandler);
+      this._driver.on('status', this._statusHandler);
       this._driver.on('error', this._errorHandler);
       this._driver.on('close', this._closeHandler);
 
@@ -66,6 +179,7 @@ export class ConnectionManager {
         const driver = this._driver;
         this._driver = null;
         driver.off?.('data', this._connectHandler);
+        driver.off?.('status', this._statusHandler);
         driver.off?.('error', this._errorHandler);
         driver.off?.('close', this._closeHandler);
         await driver.disconnect?.().catch((error) => console.warn('Disconnect after failed connect error:', error));
@@ -87,6 +201,7 @@ export class ConnectionManager {
         const driver = this._driver;
         this._driver = null;
         driver.off?.('data', this._connectHandler);
+        driver.off?.('status', this._statusHandler);
         driver.off?.('error', this._errorHandler);
         driver.off?.('close', this._closeHandler);
         await driver.disconnect();
@@ -95,6 +210,11 @@ export class ConnectionManager {
       console.warn('Disconnect error:', e);
     }
     this._parser.stopStats();
+    this._mqttParsers.forEach((parser) => parser.destroy());
+    this._mqttParsers.clear();
+    this._udpParsers.forEach((parser) => parser.destroy());
+    this._udpParsers.clear();
+    eventBus.emit('gateway:status', { type: 'gateway.disconnected' });
     appState.connectionState = ConnectionState.Disconnected;
     eventBus.emit('toast', { type: 'info', message: t('messages.disconnected') });
     this._disconnecting = false;
@@ -119,7 +239,12 @@ export class ConnectionManager {
   }
 
   destroy() {
+    this._gatewayCommandUnsubscribe?.();
     this.disconnect();
     this._parser.destroy();
+    this._mqttParsers.forEach((parser) => parser.destroy());
+    this._mqttParsers.clear();
+    this._udpParsers.forEach((parser) => parser.destroy());
+    this._udpParsers.clear();
   }
 }

@@ -4,14 +4,15 @@
 import { eventBus } from '../core/EventBus.js';
 import { appState } from '../core/AppState.js';
 import { t } from '../core/i18n.js';
-import { PlotWidget } from '../widgets/PlotWidget.js?v=axis-units-20260525-1';
-import { GaugeWidget } from '../widgets/GaugeWidget.js?v=axis-units-20260525-1';
-import { BarWidget } from '../widgets/BarWidget.js?v=axis-units-20260525-1';
-import { CompassWidget } from '../widgets/CompassWidget.js?v=axis-units-20260525-1';
-import { LedWidget } from '../widgets/LedWidget.js?v=dashboard-editor-fix-20260514-1';
-import { FftWidget } from '../widgets/FftWidget.js?v=fft-analysis-20260525-1';
-import { DataGridWidget } from '../widgets/DataGridWidget.js';
-import { AccelWidget } from '../widgets/AccelWidget.js';
+import { PlotWidget } from '../widgets/PlotWidget.js?v=multi-udp-source-filter-20260622-1';
+import { GaugeWidget } from '../widgets/GaugeWidget.js?v=multi-mqtt-20260618-1';
+import { BarWidget } from '../widgets/BarWidget.js?v=multi-mqtt-20260618-1';
+import { CompassWidget } from '../widgets/CompassWidget.js?v=multi-mqtt-20260618-1';
+import { LedWidget } from '../widgets/LedWidget.js?v=multi-mqtt-20260618-1';
+import { FftWidget } from '../widgets/FftWidget.js?v=multi-mqtt-20260618-1';
+import { DataGridWidget } from '../widgets/DataGridWidget.js?v=multi-mqtt-20260618-1';
+import { AccelWidget } from '../widgets/AccelWidget.js?v=multi-mqtt-20260618-1';
+import { sourceIdForDataset } from '../widgets/datasetSource.js';
 
 function finiteValues(values) {
   return values
@@ -321,6 +322,22 @@ export class Dashboard {
     const compassDatasets = datasets.filter((d) => d.compass);
     const ledDatasets = datasets.filter((d) => d.led);
     const fftDatasets = datasets.filter((d) => d.fft);
+    const sourceTitleById = new Map(
+      (project.sources || []).map((source) => [String(source.sourceId ?? ''), source.title || String(source.sourceId ?? '')])
+    );
+    const groupDatasetsBySource = (items) => {
+      const grouped = new Map();
+      items.forEach((dataset) => {
+        const sourceId = String(sourceIdForDataset(dataset) ?? '');
+        if (!grouped.has(sourceId)) grouped.set(sourceId, []);
+        grouped.get(sourceId).push(dataset);
+      });
+      return Array.from(grouped, ([sourceId, sourceDatasets]) => ({
+        sourceId,
+        title: sourceTitleById.get(sourceId) || sourceId || project.title,
+        datasets: sourceDatasets
+      }));
+    };
 
     const width = (this._grid?.clientWidth || 1100) - 8;
     let y = 0;
@@ -354,6 +371,8 @@ export class Dashboard {
             title: chart.title,
             icon: 'PLOT',
             datasetIndices: chart.datasets.map((d) => d.index),
+            datasetSourceIds: chart.datasets.map(sourceIdForDataset),
+            datasetRefs: chart.datasets.map((d) => ({ index: d.index, sourceId: sourceIdForDataset(d) })),
             datasetLabels: chart.datasets.map(datasetLabel),
             datasetUnits: chart.datasets.map((d) => d.units || ''),
             colorOffset: chart.colorOffset,
@@ -376,6 +395,8 @@ export class Dashboard {
             title: chart.title,
             icon: 'PLOT',
             datasetIndices: chart.datasets.map((d) => d.index),
+            datasetSourceIds: chart.datasets.map(sourceIdForDataset),
+            datasetRefs: chart.datasets.map((d) => ({ index: d.index, sourceId: sourceIdForDataset(d) })),
             datasetLabels: chart.datasets.map(datasetLabel),
             datasetUnits: chart.datasets.map((d) => d.units || ''),
             colorOffset: chart.colorOffset ?? chart.datasets[0]?.index ?? 0,
@@ -419,6 +440,7 @@ export class Dashboard {
       addFlowWidget(({ x, y: widgetY, w, h }) => new GaugeWidget({
         title: ds.title,
         datasetIndex: ds.index,
+        sourceId: sourceIdForDataset(ds),
         min: ds.min,
         max: ds.max,
         units: ds.units,
@@ -446,6 +468,7 @@ export class Dashboard {
       addFlowWidget(({ x, y: widgetY, w, h }) => new CompassWidget({
         title: ds.title,
         datasetIndex: ds.index,
+        sourceId: sourceIdForDataset(ds),
         units: ds.units,
         x,
         y: widgetY,
@@ -467,31 +490,36 @@ export class Dashboard {
     }
 
     if (fftDatasets.length > 0) {
-      addFlowWidget(({ x, y: widgetY, w, h }) => new FftWidget({
-        title: 'FFT',
-        icon: 'FFT',
-        datasets: fftDatasets,
-        x,
-        y: widgetY,
-        w,
-        h
-      }), width, 280);
+      groupDatasetsBySource(fftDatasets).forEach((sourceGroup) => {
+        addFlowWidget(({ x, y: widgetY, w, h }) => new FftWidget({
+          title: sourceGroup.sourceId ? `${sourceGroup.title} - FFT` : 'FFT',
+          icon: 'FFT',
+          datasets: sourceGroup.datasets,
+          x,
+          y: widgetY,
+          w,
+          h
+        }), width, 280);
+      });
     }
 
     finishFlow();
 
     if (datasets.length > 0) {
-      const dg = new DataGridWidget({
-        title: t('dashboard.allData'),
-        icon: 'GRID',
-        datasets,
-        x: 0,
-        y,
-        w: width,
-        h: 260
+      groupDatasetsBySource(datasets).forEach((sourceGroup) => {
+        const dg = new DataGridWidget({
+          title: sourceGroup.sourceId ? `${sourceGroup.title} - ${t('dashboard.allData')}` : t('dashboard.allData'),
+          icon: 'GRID',
+          datasets: sourceGroup.datasets,
+          x: 0,
+          y,
+          w: width,
+          h: 260
+        });
+        dg.mount(this._canvas);
+        this._widgets.push(dg);
+        y += 260 + gap;
       });
-      dg.mount(this._canvas);
-      this._widgets.push(dg);
     }
 
     this._updateCanvasHeight();

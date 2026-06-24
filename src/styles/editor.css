@@ -24,6 +24,31 @@
 .modal-body { flex:1;overflow-y:auto;padding:var(--space-5) }
 .modal-footer { display:flex;align-items:center;justify-content:flex-end;gap:var(--space-2);padding:var(--space-3) var(--space-5);border-top:1px solid var(--border-subtle) }
 
+/* Multi-UDP gateway configuration */
+.gateway-config-modal { max-width:820px }
+.gateway-config-section { margin-top:var(--space-5) }
+.gateway-config-grid { margin-top:var(--space-2) }
+.gateway-config-loading { padding:var(--space-6);text-align:center;color:var(--text-muted) }
+.gateway-config-alert { margin-bottom:var(--space-4);padding:var(--space-3);color:var(--accent-amber);background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.22);border-radius:var(--radius-md);font-size:var(--font-size-sm) }
+.gateway-config-alert.error { color:var(--accent-red);background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.22) }
+.gateway-config-hint { color:var(--text-muted);font-size:var(--font-size-xs);line-height:1.6 }
+.gateway-config-checkbox { margin-top:var(--space-2) }
+.gateway-devices-editor { min-height:180px;max-height:280px }
+.gateway-device-config-list { display:flex;flex-direction:column;gap:var(--space-3);margin-top:var(--space-3) }
+.gateway-device-config-row { display:flex;align-items:flex-end;gap:var(--space-2);padding:var(--space-3);background:var(--panel-bg);border:1px solid var(--border-subtle);border-radius:var(--radius-md) }
+.gateway-device-config-fields { flex:1;display:grid;grid-template-columns:1.1fr 1fr 1fr .8fr .8fr;gap:var(--space-2);min-width:0 }
+.gateway-device-config-fields .form-input { min-width:0 }
+.gateway-remove-device { flex:0 0 auto;color:var(--accent-red) }
+.gateway-add-device { align-self:flex-start;margin-top:var(--space-3);color:var(--accent-cyan) }
+@media (max-width:700px) {
+  .gateway-config-modal { width:96%;max-height:92vh }
+  .gateway-config-grid { grid-template-columns:1fr }
+  .gateway-device-config-fields { grid-template-columns:1fr }
+}
+@media (max-width:1100px) and (min-width:701px) {
+  .gateway-device-config-fields { grid-template-columns:repeat(2,minmax(0,1fr)) }
+}
+
 /* Editor layout */
 .editor-layout { display:flex;gap:var(--space-4);min-height:400px }
 .editor-tree { width:240px;flex-shrink:0;background:var(--panel-elevated);border:1px solid var(--border-subtle);border-radius:var(--radius-md);overflow-y:auto;box-shadow:var(--shadow-sm) }

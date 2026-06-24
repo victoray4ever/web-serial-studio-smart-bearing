@@ -113,6 +113,7 @@ export class ProjectModel {
       frameParserCode: source.frameParserCode || source.frameParser || '',
       frameParserLanguage: source.frameParserLanguage ?? 0
     })) : [];
+    const parsers = data.parsers && typeof data.parsers === 'object' ? data.parsers : {};
     const frameParserCode = data.frameParserCode ||
       data.frameParser ||
       sources[0]?.frameParserCode ||
@@ -127,6 +128,7 @@ export class ProjectModel {
       frameDetection: data.frameDetection || 'EndDelimiterOnly',
       hexadecimalDelimiters: data.hexadecimalDelimiters ?? false,
       protocolFields: Array.isArray(data.protocolFields) ? data.protocolFields : [],
+      parsers,
       frameParser: data.frameParser || frameParserCode,
       frameParserCode,
       frameParserLanguage: data.frameParserLanguage ?? sources[0]?.frameParserLanguage ?? 0,
@@ -144,6 +146,7 @@ export class ProjectModel {
             return {
               title: d.title || `Dataset ${i + 1}`,
               index: d.index ?? i,
+              sourceId: d.sourceId ?? d.source ?? g.sourceId ?? g.source ?? '',
               units: d.units || '',
               widget: d.widget || groupWidget || 'Bar',
               min,

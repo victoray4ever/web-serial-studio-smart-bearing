@@ -4,6 +4,7 @@
 import { WidgetBase } from './WidgetBase.js';
 import { eventBus } from '../core/EventBus.js';
 import { formatValue } from '../utils/helpers.js';
+import { datasetFromFrame } from './datasetSource.js';
 
 export class AccelWidget extends WidgetBase {
   constructor(config = {}) {
@@ -37,7 +38,7 @@ export class AccelWidget extends WidgetBase {
     this._unsubscribe = eventBus.on('frame:received', (frame) => {
       if (this._destroyed) return;
       this._axes.forEach((ax, i) => {
-        const ds = frame.datasets?.[ax.index];
+        const ds = datasetFromFrame(frame, ax, i);
         if (!ds) return;
         const v = typeof ds.value === 'number' ? ds.value : parseFloat(ds.value) || 0;
         const item = this._items[i];

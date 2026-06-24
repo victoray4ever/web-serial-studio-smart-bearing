@@ -3,12 +3,14 @@
  */
 import { WidgetBase } from './WidgetBase.js';
 import { eventBus } from '../core/EventBus.js';
+import { datasetFromFrame } from './datasetSource.js';
 
 export class CompassWidget extends WidgetBase {
   constructor(config = {}) {
     super({ title: config.title || 'Compass', icon: '🧭', ...config });
     this._heading = 0;
     this._datasetIndex = config.datasetIndex ?? 6;
+    this._datasetRef = { index: this._datasetIndex, sourceId: config.sourceId };
     this._units = config.units || 'deg';
     this._canvas = null;
     this._ctx = null;
@@ -32,7 +34,7 @@ export class CompassWidget extends WidgetBase {
   _subscribe() {
     this._unsubscribe = eventBus.on('frame:received', (frame) => {
       if (this._destroyed) return;
-      const ds = frame.datasets?.[this._datasetIndex];
+      const ds = datasetFromFrame(frame, this._datasetRef, this._datasetIndex);
       if (!ds) return;
       const v = typeof ds.value === 'number' ? ds.value : parseFloat(ds.value) || 0;
       this._heading = v;

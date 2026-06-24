@@ -4,6 +4,7 @@
 import { WidgetBase } from './WidgetBase.js';
 import { eventBus } from '../core/EventBus.js';
 import { getDatasetColor, formatValue } from '../utils/helpers.js';
+import { datasetFromFrame } from './datasetSource.js';
 
 export class BarWidget extends WidgetBase {
   constructor(config = {}) {
@@ -40,7 +41,7 @@ export class BarWidget extends WidgetBase {
     this._unsubscribe = eventBus.on('frame:received', (frame) => {
       if (this._destroyed) return;
       this._datasets.forEach((ds, i) => {
-        const fds = frame.datasets?.[ds.index];
+        const fds = datasetFromFrame(frame, ds, i);
         if (!fds) return;
         const v = typeof fds.value === 'number' ? fds.value : parseFloat(fds.value) || 0;
         this._values[i] = v;
