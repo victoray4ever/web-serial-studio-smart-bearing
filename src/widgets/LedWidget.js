@@ -4,6 +4,7 @@
 import { WidgetBase } from './WidgetBase.js';
 import { eventBus } from '../core/EventBus.js';
 import { getDatasetColor, formatValue } from '../utils/helpers.js';
+import { datasetFromFrame } from './datasetSource.js';
 
 export class LedWidget extends WidgetBase {
   constructor(config = {}) {
@@ -42,7 +43,7 @@ export class LedWidget extends WidgetBase {
     this._unsubscribe = eventBus.on('frame:received', (frame) => {
       if (this._destroyed) return;
       this._items.forEach((item) => {
-        const fds = frame.datasets?.[item.ds.index];
+        const fds = datasetFromFrame(frame, item.ds, 0);
         if (!fds) return;
         const value = typeof fds.value === 'number' ? fds.value : Number.parseFloat(fds.value) || 0;
         const enabled = value >= this._thresholdFor(item.ds);

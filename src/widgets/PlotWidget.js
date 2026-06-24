@@ -5,12 +5,15 @@ import { WidgetBase } from './WidgetBase.js';
 import { eventBus } from '../core/EventBus.js';
 import { appState } from '../core/AppState.js';
 import { getDatasetColor, getDatasetColorAlpha } from '../utils/helpers.js';
+import { datasetFromFrame } from './datasetSource.js';
 
 export class PlotWidget extends WidgetBase {
   constructor(config = {}) {
     super({ title: config.title || 'Plot', icon: 'P', ...config });
     this._chart = null;
     this._datasetIndices = config.datasetIndices || [0];
+    this._datasetRefs = config.datasetRefs ||
+      this._datasetIndices.map((index, i) => ({ index, sourceId: config.datasetSourceIds?.[i] }));
     this._datasetLabels = config.datasetLabels || ['Channel 1'];
     this._datasetUnits = config.datasetUnits || this._datasetIndices.map(() => '');
     this._maxPoints = appState.points;
@@ -241,15 +244,23 @@ export class PlotWidget extends WidgetBase {
     if (this._paused || this._destroyed) return;
     const maxPts = appState.points;
     let appendedCount = 0;
+    const receivedDatasets = this._datasetRefs.map((ref, i) => (
+      datasetFromFrame(frame, ref, this._datasetIndices[i])
+    ));
 
-    this._datasetIndices.forEach((idx, i) => {
-      const ds = frame.datasets?.[idx];
+    // A frame belonging to another source must not create artificial zero
+    // samples in this chart. This is essential when several UDP sources reuse
+    // the same local dataset indexes.
+    if (!receivedDatasets.some(Boolean)) return;
+
+    receivedDatasets.forEach((ds, i) => {
       this._lastFrameDatasets[i] = ds || null;
+      if (!ds) return;
       if (ds && ds.buffer && Array.isArray(ds.buffer)) {
         this._data[i].push(...ds.buffer);
         appendedCount = Math.max(appendedCount, ds.buffer.length);
       } else {
-        const val = ds ? (typeof ds.value === 'number' ? ds.value : parseFloat(ds.value) || 0) : 0;
+        const val = typeof ds.value === 'number' ? ds.value : parseFloat(ds.value) || 0;
         this._data[i].push(val);
         appendedCount = Math.max(appendedCount, 1);
       }

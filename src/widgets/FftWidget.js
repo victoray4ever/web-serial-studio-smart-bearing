@@ -5,6 +5,7 @@ import FFT from 'https://cdn.jsdelivr.net/npm/fft.js@4.0.4/lib/fft.js/+esm';
 import { WidgetBase } from './WidgetBase.js';
 import { eventBus } from '../core/EventBus.js';
 import { getDatasetColor } from '../utils/helpers.js';
+import { datasetFromFrame } from './datasetSource.js';
 
 const FFT_SIZES = [128, 256, 512, 1024];
 const DB_FLOOR = -120;
@@ -59,7 +60,7 @@ export class FftWidget extends WidgetBase {
     this._unsubscribe = eventBus.on('frame:received', (frame) => {
       if (this._destroyed) return;
       this._datasets.forEach((dataset, index) => {
-        const received = frame.datasets?.[dataset.index];
+        const received = datasetFromFrame(frame, dataset, index);
         if (!received) return;
         const incoming = Array.isArray(received.buffer) && received.buffer.length
           ? received.buffer.map(Number).filter(Number.isFinite)

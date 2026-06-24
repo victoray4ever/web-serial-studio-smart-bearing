@@ -4,15 +4,16 @@
 import { eventBus } from './core/EventBus.js';
 import { appState } from './core/AppState.js';
 import { applyTheme, modeLabel, t } from './core/i18n.js?v=mems-cms-brand-20260525-2';
-import { ConnectionManager } from './io/ConnectionManager.js?v=mqtt-check-20260519-1';
+import { ConnectionManager } from './io/ConnectionManager.js?v=multi-udp-gateway-routing-20260619-2';
 import { DataSimulator } from './io/DataSimulator.js?v=fft-analysis-20260525-1';
 import { Toolbar } from './ui/Toolbar.js?v=mems-cms-brand-20260525-2';
-import { Sidebar } from './ui/Sidebar.js?v=csv-autosave-20260424-1';
-import { Dashboard } from './ui/Dashboard.js?v=axis-units-20260525-1';
+import { Sidebar } from './ui/Sidebar.js?v=multi-udp-gateway-routing-20260619-2';
+import { Dashboard } from './ui/Dashboard.js?v=multi-udp-source-filter-20260622-1';
 import { Console } from './ui/Console.js?v=ui-fix-20260424-1';
-import { ProjectModel } from './core/ProjectModel.js?v=fft-analysis-20260525-1';
+import { ProjectModel } from './core/ProjectModel.js?v=multi-mqtt-20260618-1';
 import { PreferencesDialog } from './ui/PreferencesDialog.js?v=mems-cms-brand-20260525-2';
 import { ProjectEditorDialog } from './ui/ProjectEditorDialog.js?v=fft-analysis-20260525-1';
+import { GatewayConfigDialog } from './ui/GatewayConfigDialog.js?v=multi-udp-gateway-routing-20260619-2';
 import { runDocCaptureScenario } from './utils/docCapture.js?v=doc-capture-20260424-1';
 
 class App {
@@ -26,6 +27,7 @@ class App {
     this._console = null;
     this._prefs = null;
     this._projectEditor = null;
+    this._gatewayConfig = null;
     this._init();
   }
 
@@ -51,6 +53,7 @@ class App {
     this._dashboard = new Dashboard(document.getElementById('dashboard-area'));
     this._console = new Console(document.getElementById('console-area'), this._conn);
     this._prefs = new PreferencesDialog(document.getElementById('modal-root'));
+    this._gatewayConfig = new GatewayConfigDialog(document.getElementById('modal-root'));
     this._projectEditor = new ProjectEditorDialog(document.getElementById('modal-root'), this._project, {
       onApply: (project) => {
         this._applyProject(project, { mode: 'ProjectFile' });

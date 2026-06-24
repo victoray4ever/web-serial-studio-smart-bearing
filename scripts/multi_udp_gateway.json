@@ -1,0 +1,69 @@
+{
+  "name": "MEMS-CMS Multi UDP Gateway",
+  "udp": {
+    "host": "0.0.0.0",
+    "port": 4000
+  },
+  "websocket": {
+    "host": "127.0.0.1",
+    "port": 8765
+  },
+  "routing": {
+    "unknownDevices": "ip",
+    "sequence": {
+      "enabled": false,
+      "offset": 0,
+      "size": 4,
+      "byteOrder": "little"
+    },
+    "frameNumbering": {
+      "enabled": true,
+      "start": 0
+    },
+    "devices": [
+      {
+        "ip": "192.168.1.251",
+        "sourceId": "node-01",
+        "title": "轴承01",
+        "port": 1030,
+        "commandPort": 4000
+      },
+      {
+        "ip": "192.168.1.253",
+        "sourceId": "node-02",
+        "title": "轴承02",
+        "port": 1030,
+        "commandPort": 4000
+      },
+      {
+        "ip": "192.168.1.250",
+        "sourceId": "node-03",
+        "title": "轴承03",
+        "port": 1030,
+        "commandPort": 4000
+      }
+    ]
+  },
+  "aggregation": {
+    "mode": "realtime",
+    "frame": {
+      "startDelimiter": "5A A5",
+      "endDelimiter": "DD EE",
+      "frameLength": 5732,
+      "timeoutMs": 2000,
+      "maxBufferBytes": 65536
+    }
+  },
+  "status": {
+    "intervalMs": 1000,
+    "offlineAfterMs": 5000
+  },
+  "outbound": {
+    "defaultSourceId": "",
+    "host": "",
+    "port": 0
+  },
+  "control": {
+    "allowRemote": false
+  }
+}

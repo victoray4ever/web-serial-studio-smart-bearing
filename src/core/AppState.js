@@ -34,6 +34,7 @@ function createDefaultMqttConfig() {
     port: 8084,
     path: '/mqtt',
     topic: 'sensor/data',
+    subscriptions: [],
     retain: false,
     clean: true,
     username: '',
@@ -47,6 +48,8 @@ function createDefaultMqttConfig() {
 
 function createDefaultUdpConfig() {
   return {
+    mode: 'legacy',
+    commandSourceId: '',
     bridgeUrl: 'ws://localhost:8765',
     remoteHost: '192.168.1.252',
     remotePort: 1030,
@@ -207,6 +210,7 @@ class AppState {
   }
   updateUdpConfig(cfg) {
     Object.assign(this._udpConfig, cfg);
+    eventBus.emit('state:udpConfigChanged', this.udpConfig);
     this._saveSettings();
   }
   updateFrameConfig(cfg) {

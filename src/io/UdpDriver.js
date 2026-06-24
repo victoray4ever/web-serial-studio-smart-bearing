@@ -6,6 +6,46 @@
  */
 import { appState } from '../core/AppState.js';
 
+const GATEWAY_MAGIC = [0x4d, 0x55, 0x47, 0x31]; // MUG1
+const COMMAND_MAGIC = [0x4d, 0x55, 0x43, 0x31]; // MUC1
+
+function isGatewayPacket(bytes) {
+  return bytes.length >= 8 && GATEWAY_MAGIC.every((value, index) => bytes[index] === value);
+}
+
+function decodeGatewayPacket(bytes) {
+  if (!isGatewayPacket(bytes)) return null;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const metadataLength = view.getUint32(4, true);
+  const payloadOffset = 8 + metadataLength;
+  if (metadataLength <= 0 || payloadOffset > bytes.length) {
+    throw new Error('Invalid multi-UDP gateway packet header.');
+  }
+  const metadataText = new TextDecoder().decode(bytes.subarray(8, payloadOffset));
+  const metadata = JSON.parse(metadataText);
+  const payload = bytes.slice(payloadOffset);
+  if (Number.isFinite(Number(metadata.payloadLength)) && Number(metadata.payloadLength) !== payload.length) {
+    throw new Error(`Gateway payload length mismatch (${payload.length}/${metadata.payloadLength}).`);
+  }
+  return { ...metadata, payload };
+}
+
+function encodeGatewayCommand(data, sourceId) {
+  const payload = data instanceof Uint8Array
+    ? data
+    : (data instanceof ArrayBuffer ? new Uint8Array(data) : new TextEncoder().encode(String(data)));
+  const metadata = new TextEncoder().encode(JSON.stringify({
+    type: 'gateway.command',
+    sourceId: sourceId || ''
+  }));
+  const packet = new Uint8Array(8 + metadata.length + payload.length);
+  packet.set(COMMAND_MAGIC, 0);
+  new DataView(packet.buffer).setUint32(4, metadata.length, true);
+  packet.set(metadata, 8);
+  packet.set(payload, 8 + metadata.length);
+  return packet;
+}
+
 function buildBridgeUrl(cfg) {
   const raw = (cfg.bridgeUrl || '').trim() || 'ws://localhost:8765';
   if (!raw.startsWith('ws://') && !raw.startsWith('wss://')) {
@@ -13,6 +53,10 @@ function buildBridgeUrl(cfg) {
   }
 
   const url = new URL(raw);
+  if (cfg.mode === 'gateway') {
+    url.searchParams.set('client', 'mems-cms');
+    return url.toString();
+  }
   url.searchParams.set('remoteHost', (cfg.remoteHost || '').trim());
   url.searchParams.set('remotePort', String(Number(cfg.remotePort) || 0));
   url.searchParams.set('localHost', (cfg.localHost || '0.0.0.0').trim());
@@ -23,7 +67,7 @@ function buildBridgeUrl(cfg) {
 export class UdpDriver {
   constructor() {
     this._ws = null;
-    this._callbacks = { data: [], error: [], close: [] };
+    this._callbacks = { data: [], status: [], error: [], close: [] };
   }
 
   on(event, cb) { this._callbacks[event]?.push(cb); }
@@ -49,14 +93,30 @@ export class UdpDriver {
         this._ws.onclose = () => this._emit('close');
         this._ws.onmessage = async (e) => {
           if (typeof e.data === 'string') {
+            try {
+              const message = JSON.parse(e.data);
+              if (String(message?.type || '').startsWith('gateway.')) {
+                this._emit('status', message);
+                return;
+              }
+            } catch (_error) {
+              // A legacy bridge may forward ordinary text payloads.
+            }
             this._emit('data', new TextEncoder().encode(e.data));
             return;
           }
+          let bytes;
           if (e.data instanceof Blob) {
-            this._emit('data', new Uint8Array(await e.data.arrayBuffer()));
-            return;
+            bytes = new Uint8Array(await e.data.arrayBuffer());
+          } else {
+            bytes = new Uint8Array(e.data);
           }
-          this._emit('data', new Uint8Array(e.data));
+          try {
+            const packet = decodeGatewayPacket(bytes);
+            this._emit('data', packet || bytes);
+          } catch (error) {
+            this._emit('error', error);
+          }
         };
       } catch (err) {
         reject(err);
@@ -68,7 +128,18 @@ export class UdpDriver {
     if (!this._ws || this._ws.readyState !== WebSocket.OPEN) {
       throw new Error('UDP bridge not connected');
     }
+    if (appState.udpConfig.mode === 'gateway') {
+      this._ws.send(encodeGatewayCommand(data, appState.udpConfig.commandSourceId));
+      return;
+    }
     this._ws.send(data);
+  }
+
+  async sendControl(message) {
+    if (!this._ws || this._ws.readyState !== WebSocket.OPEN) {
+      throw new Error('UDP gateway not connected');
+    }
+    this._ws.send(JSON.stringify(message));
   }
 
   async disconnect() {

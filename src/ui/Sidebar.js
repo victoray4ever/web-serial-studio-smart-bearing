@@ -10,6 +10,7 @@ export class Sidebar {
   constructor(container) {
     this._container = container;
     this._lastReceivedJSON = '';
+    this._gatewayStatus = null;
     this._render();
     this._bindDomEvents();
     this._updateDriverPanel();
@@ -18,6 +19,20 @@ export class Sidebar {
     eventBus.on('state:connectionStateChanged', () => this._updateStatusDot());
     eventBus.on('state:operationModeChanged', () => this._updateDriverPanel());
     eventBus.on('csv:targetChanged', () => this._updateCsvTargetHint());
+    eventBus.on('gateway:status', (status) => {
+      if (status?.type === 'gateway.command.result') {
+        eventBus.emit('toast', {
+          type: status.ok ? 'success' : 'error',
+          message: status.ok
+            ? (appState.locale === 'zh-CN' ? `命令已发送到 ${status.sourceId || status.host}` : `Command sent to ${status.sourceId || status.host}`)
+            : (status.message || (appState.locale === 'zh-CN' ? '命令发送失败' : 'Command failed'))
+        });
+        return;
+      }
+      if (status?.type === 'gateway.config' || status?.type === 'gateway.config.saved') return;
+      this._gatewayStatus = status;
+      this._renderGatewayStatus();
+    });
     eventBus.on('frame:receivedJSON', (json) => {
       this._lastReceivedJSON = JSON.stringify(json).slice(0, 200);
       const lastEl = this._container.querySelector('#json-last-received');
@@ -265,6 +280,14 @@ export class Sidebar {
     const host = cfg.host || '';
     const port = Number(cfg.port) || (cfg.useSSL ? 8084 : 8083);
     const preview = host ? `${cfg.useSSL ? 'wss' : 'ws'}://${host}:${port}${path.startsWith('/') ? path : `/${path}`}` : t('sidebar.waitingForHost');
+    const subscriptionLines = Array.isArray(cfg.subscriptions)
+      ? cfg.subscriptions.map((subscription) => {
+        if (typeof subscription === 'string') return subscription;
+        const topic = subscription.topic || subscription.mqttTopic || '';
+        const sourceId = subscription.sourceId ?? subscription.source ?? '';
+        return sourceId ? `${topic} | ${sourceId}` : topic;
+      }).filter(Boolean).join('\n')
+      : '';
 
     return `
       <div class="mqtt-config-grid">
@@ -310,6 +333,10 @@ export class Sidebar {
           <div class="form-label">${t('sidebar.topic')}</div>
           <input class="form-input" id="drv-mqtt-topic" value="${cfg.topic || ''}" placeholder="sensor/data">
         </div>
+        <div class="form-row" style="grid-column:1 / -1">
+          <div class="form-label">${appState.locale === 'zh-CN' ? '订阅主题列表' : 'Subscriptions'}</div>
+          <textarea class="form-input mono" id="drv-mqtt-subscriptions" rows="4" placeholder="bearing/v2/data | bearing-v2&#10;gearbox/data | gearbox">${subscriptionLines}</textarea>
+        </div>
         <div class="form-row">
           <div class="form-label">${t('sidebar.websocketPath')}</div>
           <input class="form-input" id="drv-mqtt-path" value="${path}" placeholder="/mqtt">
@@ -344,8 +371,20 @@ export class Sidebar {
       <div class="mqtt-helper-card">
         <div class="mqtt-helper-title">${t('sidebar.browserEndpoint')}</div>
         <div class="mqtt-helper-url mono">${preview}</div>
-        <div class="mqtt-helper-note">${t('sidebar.mqttHelper')}</div>
+        <div class="mqtt-helper-note">${t('sidebar.mqttHelper')} ${appState.locale === 'zh-CN' ? '多主题格式：每行 topic 或 topic | sourceId。sourceId 用于绑定项目 sources 中的解析器。' : 'Multi-topic format: one topic per line, or topic | sourceId.'}</div>
       </div>`;
+  }
+
+  _parseMqttSubscriptionLines(text) {
+    return String(text || '')
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const [topicPart, sourcePart] = line.split('|').map((part) => part.trim());
+        return sourcePart ? { topic: topicPart, sourceId: sourcePart } : { topic: topicPart };
+      })
+      .filter((subscription) => subscription.topic);
   }
 
   _bindMqttConfigPanel(panel) {
@@ -363,6 +402,7 @@ export class Sidebar {
         host: panel.querySelector('#drv-mqtt-host')?.value?.trim() || '',
         port,
         topic: panel.querySelector('#drv-mqtt-topic')?.value?.trim() || '',
+        subscriptions: this._parseMqttSubscriptionLines(panel.querySelector('#drv-mqtt-subscriptions')?.value || ''),
         path: panel.querySelector('#drv-mqtt-path')?.value?.trim() || '/mqtt',
         username: panel.querySelector('#drv-mqtt-user')?.value || '',
         password: panel.querySelector('#drv-mqtt-pass')?.value || '',
@@ -383,7 +423,7 @@ export class Sidebar {
       if (preview) preview.textContent = next.brokerUrl || t('sidebar.waitingForHost');
     };
 
-    panel.querySelectorAll('#drv-mqtt-version, #drv-mqtt-mode, #drv-mqtt-qos, #drv-mqtt-keepalive, #drv-mqtt-host, #drv-mqtt-port, #drv-mqtt-topic, #drv-mqtt-path, #drv-mqtt-user, #drv-mqtt-pass, #drv-mqtt-clientid, #drv-mqtt-ssl, #drv-mqtt-clean, #drv-mqtt-retain')
+    panel.querySelectorAll('#drv-mqtt-version, #drv-mqtt-mode, #drv-mqtt-qos, #drv-mqtt-keepalive, #drv-mqtt-host, #drv-mqtt-port, #drv-mqtt-topic, #drv-mqtt-subscriptions, #drv-mqtt-path, #drv-mqtt-user, #drv-mqtt-pass, #drv-mqtt-clientid, #drv-mqtt-ssl, #drv-mqtt-clean, #drv-mqtt-retain')
       .forEach((el) => {
         const eventName = el.type === 'checkbox' || el.tagName === 'SELECT' ? 'change' : 'input';
         el.addEventListener(eventName, update);
@@ -391,12 +431,35 @@ export class Sidebar {
   }
 
   _buildUdpConfigPanel(cfg) {
+    const isGateway = cfg.mode === 'gateway';
+    const commandTargets = Array.isArray(this._gatewayStatus?.devices) ? this._gatewayStatus.devices : [];
+    const modeLabel = appState.locale === 'zh-CN' ? '接入模式' : 'Access Mode';
+    const legacyLabel = appState.locale === 'zh-CN' ? '兼容 UDP 桥接' : 'Legacy UDP Bridge';
+    const gatewayLabel = appState.locale === 'zh-CN' ? '多 UDP 网关' : 'Multi-UDP Gateway';
+    const urlLabel = isGateway
+      ? (appState.locale === 'zh-CN' ? '网关 WebSocket 地址' : 'Gateway WebSocket URL')
+      : t('sidebar.bridgeUrl');
     return `
       <div class="mqtt-config-grid">
+        <div class="form-row" style="grid-column:1 / -1">
+          <div class="form-label">${modeLabel}</div>
+          <select class="form-select" id="drv-udp-mode">
+            <option value="legacy" ${!isGateway ? 'selected' : ''}>${legacyLabel}</option>
+            <option value="gateway" ${isGateway ? 'selected' : ''}>${gatewayLabel}</option>
+          </select>
+        </div>
         <div class="form-row">
-          <div class="form-label">${t('sidebar.bridgeUrl')}</div>
+          <div class="form-label">${urlLabel}</div>
           <input class="form-input" id="drv-udp-bridge" value="${cfg.bridgeUrl || 'ws://localhost:8765'}" placeholder="ws://localhost:8765">
         </div>
+        ${isGateway ? `<div class="form-row">
+          <div class="form-label">${appState.locale === 'zh-CN' ? '网页命令目标' : 'Web Command Target'}</div>
+          <select class="form-select" id="drv-udp-command-source">
+            <option value="">${appState.locale === 'zh-CN' ? '使用网关默认路由' : 'Use gateway default route'}</option>
+            ${commandTargets.map((device) => `<option value="${this._escapeHtml(device.sourceId)}" ${String(cfg.commandSourceId || '') === String(device.sourceId) ? 'selected' : ''}>${this._escapeHtml(device.title || device.sourceId)} · ${this._escapeHtml(device.sourceId)}</option>`).join('')}
+          </select>
+        </div>` : ''}
+        ${isGateway ? '' : `
         <div class="form-row">
           <div class="form-label">${t('sidebar.remoteIp')}</div>
           <input class="form-input" id="drv-udp-remote-host" value="${cfg.remoteHost || ''}" placeholder="192.168.1.252">
@@ -413,30 +476,131 @@ export class Sidebar {
           <div class="form-label">${t('sidebar.localPort')}</div>
           <input class="form-input" id="drv-udp-local-port" type="number" min="1" max="65535" value="${cfg.localPort || 4000}">
         </div>
+        `}
       </div>
       <div class="mqtt-helper-card">
-        <div class="mqtt-helper-title">${t('sidebar.udpBridge')}</div>
-        <div class="mqtt-helper-url mono">python scripts/udp_ws_bridge.py --local-port ${cfg.localPort || 4000} --remote-host ${cfg.remoteHost || '192.168.1.252'} --remote-port ${cfg.remotePort || 1030}</div>
-        <div class="mqtt-helper-note">${t('sidebar.udpHelper')}</div>
-      </div>`;
+        <div class="mqtt-helper-title">${isGateway ? gatewayLabel : t('sidebar.udpBridge')}</div>
+        <div class="mqtt-helper-url mono">${isGateway
+          ? 'python scripts/multi_udp_gateway.py --config scripts/multi_udp_gateway.json'
+          : `python scripts/udp_ws_bridge.py --local-port ${cfg.localPort || 4000} --remote-host ${cfg.remoteHost || '192.168.1.252'} --remote-port ${cfg.remotePort || 1030}`}</div>
+        <div class="mqtt-helper-note">${isGateway
+          ? (appState.locale === 'zh-CN' ? '设备编号、序号提取和监听端口由 JSON 配置文件管理。修改配置后请重启网关。' : 'Device IDs, sequence extraction and listen ports are managed by JSON. Restart the gateway after editing it.')
+          : t('sidebar.udpHelper')}</div>
+      </div>
+      ${isGateway ? '<div class="gateway-status-card" id="gateway-status-card"></div>' : ''}`;
   }
 
   _bindUdpConfigPanel(panel) {
     const update = () => {
       appState.updateUdpConfig({
+        mode: panel.querySelector('#drv-udp-mode')?.value || 'legacy',
+        commandSourceId: panel.querySelector('#drv-udp-command-source')?.value || appState.udpConfig.commandSourceId || '',
         bridgeUrl: panel.querySelector('#drv-udp-bridge')?.value?.trim() || 'ws://localhost:8765',
-        remoteHost: panel.querySelector('#drv-udp-remote-host')?.value?.trim() || '',
-        remotePort: Math.max(1, parseInt(panel.querySelector('#drv-udp-remote-port')?.value, 10) || 1030),
-        localHost: panel.querySelector('#drv-udp-local-host')?.value?.trim() || '0.0.0.0',
-        localPort: Math.max(1, parseInt(panel.querySelector('#drv-udp-local-port')?.value, 10) || 4000)
+        remoteHost: panel.querySelector('#drv-udp-remote-host')?.value?.trim() || appState.udpConfig.remoteHost || '',
+        remotePort: Math.max(1, parseInt(panel.querySelector('#drv-udp-remote-port')?.value, 10) || appState.udpConfig.remotePort || 1030),
+        localHost: panel.querySelector('#drv-udp-local-host')?.value?.trim() || appState.udpConfig.localHost || '0.0.0.0',
+        localPort: Math.max(1, parseInt(panel.querySelector('#drv-udp-local-port')?.value, 10) || appState.udpConfig.localPort || 4000)
       });
     };
 
+    panel.querySelector('#drv-udp-mode')?.addEventListener('change', (event) => {
+      appState.updateUdpConfig({ mode: event.target.value });
+      this._updateDriverPanel();
+    });
+    panel.querySelector('#drv-udp-command-source')?.addEventListener('change', (event) => {
+      appState.updateUdpConfig({ commandSourceId: event.target.value || '' });
+    });
     panel.querySelectorAll('#drv-udp-bridge, #drv-udp-remote-host, #drv-udp-remote-port, #drv-udp-local-host, #drv-udp-local-port')
       .forEach((el) => {
         const eventName = el.type === 'number' ? 'change' : 'input';
         el.addEventListener(eventName, update);
       });
+    this._renderGatewayStatus();
+  }
+
+  _escapeHtml(value) {
+    return String(value ?? '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#039;');
+  }
+
+  _formatGatewayBytes(value) {
+    const bytes = Number(value) || 0;
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  _renderGatewayStatus() {
+    const card = this._container.querySelector('#gateway-status-card');
+    if (!card) return;
+    const zh = appState.locale === 'zh-CN';
+    const status = this._gatewayStatus;
+    this._updateGatewayCommandTargets();
+    if (!status || status.type === 'gateway.disconnected') {
+      card.innerHTML = `<div class="gateway-status-heading"><span class="gateway-health-dot"></span>${zh ? '网关未连接' : 'Gateway disconnected'}</div>
+        <div class="gateway-status-empty">${zh ? '启动网关并点击工具栏连接按钮后显示设备状态。' : 'Start the gateway and connect to view device status.'}</div>`;
+      return;
+    }
+    if (status.type === 'gateway.hello') {
+      card.innerHTML = `<div class="gateway-status-heading"><span class="gateway-health-dot online"></span><span>${this._escapeHtml(status.gateway || (zh ? '网关已连接' : 'Gateway connected'))}</span><button class="btn gateway-config-button" data-gateway-config>${zh ? '配置' : 'Configure'}</button></div>
+        <div class="gateway-status-empty">${zh ? '正在等待状态数据…' : 'Waiting for status data…'}</div>`;
+      this._bindGatewayStatusActions(card);
+      return;
+    }
+    if (status.type === 'gateway.error') {
+      card.innerHTML = `<div class="gateway-status-heading"><span class="gateway-health-dot error"></span>${zh ? '网关错误' : 'Gateway error'}</div>
+        <div class="gateway-status-empty">${this._escapeHtml(status.message || '')}</div>`;
+      return;
+    }
+
+    const devices = Array.isArray(status.devices) ? status.devices : [];
+    const deviceRows = devices.length
+      ? devices.map((device) => `
+        <div class="gateway-device-row">
+          <span class="gateway-health-dot ${device.online ? 'online' : ''}"></span>
+          <div class="gateway-device-main">
+            <div class="gateway-device-name">${this._escapeHtml(device.title || device.sourceId)}</div>
+            <div class="gateway-device-endpoint mono">${this._escapeHtml(device.sourceId)} · ${this._escapeHtml(device.ip)}:${Number(device.port) || 0}</div>
+            <div class="gateway-device-endpoint mono">frame #${Number(device.lastFrameNumber) || 0} · ${zh ? '设备序号' : 'device seq'} ${device.lastSequence ?? '-'}</div>
+            <div class="gateway-device-endpoint mono">${zh ? 'UDP包' : 'UDP packets'} ${Number(device.packets) || 0} · ${zh ? '完整帧' : 'frames'} ${Number(device.frames) || 0}</div>
+            <div class="gateway-device-endpoint mono">${zh ? '残帧' : 'incomplete'} ${Number(device.incompleteFrames) || 0} · ${zh ? '无效帧' : 'invalid'} ${Number(device.invalidFrames) || 0} · ${zh ? '缓存' : 'buffer'} ${Number(device.bufferedBytes) || 0} B</div>
+          </div>
+          <div class="gateway-device-count mono">${Number(device.frames) || 0}</div>
+        </div>`).join('')
+      : `<div class="gateway-status-empty">${zh ? '等待 UDP 设备数据…' : 'Waiting for UDP device data…'}</div>`;
+
+    card.innerHTML = `
+      <div class="gateway-status-heading">
+        <span class="gateway-health-dot online"></span>
+        <span>${this._escapeHtml(status.gateway || (zh ? '多 UDP 网关' : 'Multi-UDP Gateway'))}</span>
+        <button class="btn gateway-config-button" data-gateway-config>${zh ? '配置' : 'Configure'}</button>
+      </div>
+      <div class="gateway-stat-grid">
+        <div><strong>${Number(status.onlineDevices) || 0}/${Number(status.knownDevices) || 0}</strong><span>${zh ? '在线设备' : 'Online'}</span></div>
+        <div><strong>${Number(status.frames) || 0}/${Number(status.packets) || 0}</strong><span>${zh ? '完整帧 / UDP包' : 'Frames / UDP packets'}</span></div>
+        <div><strong>${this._formatGatewayBytes(status.bytes)}</strong><span>${zh ? '接收数据' : 'Received'}</span></div>
+        <div><strong>${Number(status.dropped) || 0}/${Number(status.lost) || 0}</strong><span>${zh ? '丢弃 / 丢包' : 'Dropped / Lost'}</span></div>
+      </div>
+      <div class="gateway-device-list">${deviceRows}</div>`;
+    this._bindGatewayStatusActions(card);
+  }
+
+  _updateGatewayCommandTargets() {
+    const select = this._container.querySelector('#drv-udp-command-source');
+    if (!select || !Array.isArray(this._gatewayStatus?.devices)) return;
+    const selected = appState.udpConfig.commandSourceId || '';
+    const zh = appState.locale === 'zh-CN';
+    select.innerHTML = `<option value="">${zh ? '使用网关默认路由' : 'Use gateway default route'}</option>${this._gatewayStatus.devices.map((device) => `<option value="${this._escapeHtml(device.sourceId)}" ${String(selected) === String(device.sourceId) ? 'selected' : ''}>${this._escapeHtml(device.title || device.sourceId)} · ${this._escapeHtml(device.sourceId)}</option>`).join('')}`;
+  }
+
+  _bindGatewayStatusActions(card) {
+    card.querySelector('[data-gateway-config]')?.addEventListener('click', () => {
+      eventBus.emit('ui:openGatewayConfig');
+    });
   }
 
   _updateDriverPanel() {

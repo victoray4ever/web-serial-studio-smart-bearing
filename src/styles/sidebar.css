@@ -246,6 +246,119 @@
   line-height: 1.5;
   color: var(--text-secondary);
 }
+
+.gateway-status-card {
+  margin-top: var(--space-3);
+  padding: var(--space-4);
+  background: linear-gradient(180deg, var(--panel-bg), var(--bg-tertiary));
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+.gateway-status-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--space-3);
+}
+.gateway-health-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: var(--status-disconnected);
+}
+.gateway-health-dot.online {
+  background: var(--status-connected);
+  box-shadow: 0 0 7px var(--accent-green-glow);
+}
+.gateway-health-dot.error {
+  background: var(--status-error);
+  box-shadow: 0 0 7px var(--accent-red-glow);
+}
+.gateway-config-button {
+  margin-left: auto;
+  min-height: 26px;
+  padding: 3px 9px;
+  color: var(--accent-cyan);
+  font-size: var(--font-size-xs);
+  border-color: var(--border-default);
+  background: var(--bg-secondary);
+}
+.gateway-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.gateway-stat-grid > div {
+  min-width: 0;
+  padding: var(--space-2);
+  background: var(--panel-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+.gateway-stat-grid strong,
+.gateway-stat-grid span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gateway-stat-grid strong {
+  color: var(--accent-cyan);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+}
+.gateway-stat-grid span {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+.gateway-device-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-height: 190px;
+  overflow-y: auto;
+}
+.gateway-device-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border-subtle);
+}
+.gateway-device-main {
+  flex: 1;
+  min-width: 0;
+}
+.gateway-device-name,
+.gateway-device-endpoint {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gateway-device-name {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+.gateway-device-endpoint {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+.gateway-device-count {
+  color: var(--accent-blue);
+  font-size: var(--font-size-xs);
+}
+.gateway-status-empty {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+}
 .driver-config-title {
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-semibold);
