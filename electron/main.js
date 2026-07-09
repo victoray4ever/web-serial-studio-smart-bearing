@@ -1,5 +1,6 @@
 const { app, BrowserWindow, Menu, shell, session, ipcMain, dialog } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const mqtt = require('mqtt');
 const { autoUpdater } = require('electron-updater');
 const { startIntegratedUdpGateway } = require('./udpGateway');
@@ -10,6 +11,11 @@ let udpGatewayServer = null;
 const mqttSessions = new Map();
 let mainWindow = null;
 let updateCheckInProgress = false;
+
+function canUseAutoUpdater() {
+  if (isSmokeTest || isDevMode) return false;
+  return fs.existsSync(path.join(process.resourcesPath, 'app-update.yml'));
+}
 
 function ipcPayloadToBuffer(payload, payloadBase64) {
   if (payloadBase64) return Buffer.from(String(payloadBase64), 'base64');
@@ -496,6 +502,8 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on('update-not-available', () => {
+    updateCheckInProgress = false;
+    return;
     if (updateCheckInProgress && mainWindow && !mainWindow.isDestroyed()) {
       dialog.showMessageBox(mainWindow, {
         type: 'info',
@@ -527,12 +535,18 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on('error', (error) => {
+    const isManualCheck = updateCheckInProgress;
     updateCheckInProgress = false;
+    if (!isManualCheck) {
+      console.warn('[auto-update] check skipped or failed:', error?.message || error);
+      return;
+    }
     if (!mainWindow || mainWindow.isDestroyed()) return;
     dialog.showErrorBox('更新检查失败', error?.message || String(error));
   });
 
   ipcMain.handle('app:update:check', async () => {
+    if (!canUseAutoUpdater()) return { ok: false, skipped: true };
     updateCheckInProgress = true;
     await autoUpdater.checkForUpdates();
     return { ok: true };
@@ -540,7 +554,7 @@ function setupAutoUpdater() {
 }
 
 function checkForUpdatesQuietly() {
-  if (isSmokeTest || isDevMode) return;
+  if (!canUseAutoUpdater()) return;
   setTimeout(() => {
     updateCheckInProgress = false;
     autoUpdater.checkForUpdates().catch(() => {
