@@ -218,6 +218,23 @@ function getLabels(locale) {
 
 const GROUP_WIDGETS = ['DataGrid', 'MultiPlot', 'Plot', 'Bar', 'Gauge', 'Gauges', 'Compass', 'Accelerometer'];
 const DATASET_WIDGETS = ['Bar', 'Gauge', 'Plot', 'Compass', 'DataGrid'];
+const OPTION_LABELS_ZH = {
+  DataGrid: '数据表格',
+  MultiPlot: '多曲线图',
+  Plot: '折线图',
+  Bar: '柱状图',
+  Gauge: '仪表盘',
+  Gauges: '多仪表盘',
+  Compass: '罗盘',
+  Accelerometer: '加速度计',
+  EndDelimiterOnly: '仅帧尾',
+  StartAndEndDelimiter: '帧头 + 帧尾',
+  NoDelimiters: '无帧分隔',
+  Hann: 'Hann 窗',
+  None: '无',
+  linear: '线性幅值',
+  db: 'dB 幅值'
+};
 const FRAME_DETECTIONS = ['EndDelimiterOnly', 'StartAndEndDelimiter', 'NoDelimiters'];
 const PROTOCOL_FIELD_KINDS = ['byte', 'frameHeader', 'frameTail', 'frameSequence', 'frameId', 'frameLength', 'fixedArray', 'variableArray', 'checksum'];
 const FIELD_TYPES = ['uint8', 'int8', 'uint16', 'int16', 'uint24', 'int24', 'uint32', 'int32', 'float32', 'float64'];
@@ -3165,9 +3182,14 @@ export class ProjectEditorDialog {
       <div class="form-row">
         <div class="form-label">${label}</div>
         <select class="form-select" data-field="${field}" data-kind="string">
-          ${options.map((option) => `<option value="${this._escapeAttr(option)}" ${option === value ? 'selected' : ''}>${this._escape(option)}</option>`).join('')}
+          ${options.map((option) => `<option value="${this._escapeAttr(option)}" ${option === value ? 'selected' : ''}>${this._escape(this._optionLabel(option))}</option>`).join('')}
         </select>
       </div>`;
+  }
+
+  _optionLabel(option) {
+    if (appState.locale === 'en') return option;
+    return OPTION_LABELS_ZH[option] || option;
   }
 
   _renderFieldSelect(label, field, value) {
@@ -3870,7 +3892,7 @@ export class ProjectEditorDialog {
       <div class="form-row">
         <div class="form-label">${label}</div>
         <select class="form-select" id="${this._escapeAttr(id)}">
-          ${options.map((option) => `<option value="${this._escapeAttr(option)}" ${option === value ? 'selected' : ''}>${this._escape(option)}</option>`).join('')}
+          ${options.map((option) => `<option value="${this._escapeAttr(option)}" ${option === value ? 'selected' : ''}>${this._escape(this._optionLabel(option))}</option>`).join('')}
         </select>
       </div>`;
   }

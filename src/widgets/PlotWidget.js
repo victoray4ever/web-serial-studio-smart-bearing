@@ -34,6 +34,7 @@ export class PlotWidget extends WidgetBase {
     this._lastFrameDatasets = [];
     this._rawHistory = [];
     this._chartRetryTimer = null;
+    this._devicePixelRatio = Math.min(window.devicePixelRatio || 1, 2.5);
     this._frameHandler = (frame) => this._onFrame(frame);
     this._middlePanMoveHandler = (event) => this._handleMiddlePanMove(event);
     this._middlePanUpHandler = (event) => this._stopMiddlePan(event);
@@ -101,24 +102,30 @@ export class PlotWidget extends WidgetBase {
           data: this._data[i],
           borderColor: colors[i],
           backgroundColor: alphas[i],
-          borderWidth: this._datasetIndices.length === 1 ? lineWidth + 0.2 : lineWidth,
+          borderWidth: this._datasetIndices.length === 1 ? lineWidth + 0.4 : lineWidth + 0.1,
           pointRadius: 0,
-          pointHoverRadius: 3,
+          pointHoverRadius: 3.5,
           pointHitRadius: 10,
           pointHoverBorderWidth: 0,
-          tension: 0.22,
+          tension: 0.18,
           fill: this._datasetIndices.length === 1
         }))
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        devicePixelRatio: this._devicePixelRatio,
         animation: false,
+        normalized: true,
         interaction: { mode: 'index', intersect: false },
         elements: {
+          point: {
+            borderWidth: 0
+          },
           line: {
             borderCapStyle: 'round',
-            borderJoinStyle: 'round'
+            borderJoinStyle: 'round',
+            cubicInterpolationMode: 'monotone'
           }
         },
         plugins: {
@@ -188,6 +195,7 @@ export class PlotWidget extends WidgetBase {
             grid: {
               color: majorGridColor,
               drawTicks: false,
+              lineWidth: 1,
               borderColor: axisColor
             },
             ticks: {
@@ -391,7 +399,7 @@ export class PlotWidget extends WidgetBase {
     this._chart.data.datasets.forEach((dataset, index) => {
       const length = this._data[index]?.length || 0;
       dataset.pointRadius = length < 2 ? 2 : 0;
-      dataset.tension = length > 1200 ? 0 : 0.22;
+      dataset.tension = length > 1800 ? 0 : 0.18;
     });
   }
 

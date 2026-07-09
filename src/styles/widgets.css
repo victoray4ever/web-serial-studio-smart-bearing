@@ -26,8 +26,8 @@
 
 /* Gauge Widget */
 .gauge-container { display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:var(--space-2);padding:var(--space-2) var(--space-3) var(--space-3) }
-.gauge-canvas { max-width:220px;max-height:200px;filter:drop-shadow(var(--gauge-value-shadow)) }
-.gauge-value { font-family:var(--font-mono);font-size:1.3rem;font-weight:var(--font-weight-bold);color:var(--text-primary);letter-spacing:-.02em;line-height:1;margin-top:-4px;text-shadow:var(--gauge-value-shadow) }
+.gauge-canvas { display:block;max-width:100%;filter:drop-shadow(var(--gauge-value-shadow)) }
+.gauge-value { font-family:var(--font-mono);font-size:1.28rem;font-weight:var(--font-weight-bold);color:var(--text-primary);letter-spacing:0;line-height:1;margin-top:-6px;text-shadow:var(--gauge-value-shadow) }
 .gauge-label { font-size:var(--font-size-sm);color:var(--gauge-scale-text);letter-spacing:.02em }
 .gauge-range { display:flex;justify-content:space-between;width:100%;padding:0 var(--space-4);font-size:var(--font-size-sm);color:var(--gauge-scale-text);font-family:var(--font-mono);font-variant-numeric:tabular-nums }
 

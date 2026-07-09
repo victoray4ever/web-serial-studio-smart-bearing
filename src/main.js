@@ -11,8 +11,8 @@ import { Sidebar } from './ui/Sidebar.js?v=interface-sync-20260709-1';
 import { Dashboard } from './ui/Dashboard.js?v=solid-mems-theme-20260708-1';
 import { Console } from './ui/Console.js?v=ui-fix-20260424-1';
 import { ProjectModel } from './core/ProjectModel.js?v=protocol-editor-v4-20260706-1';
-import { PreferencesDialog } from './ui/PreferencesDialog.js?v=interface-sync-20260709-1';
-import { ProjectEditorDialog } from './ui/ProjectEditorDialog.js?v=editor-group-sync-20260708-1';
+import { PreferencesDialog } from './ui/PreferencesDialog.js?v=auto-update-20260709-1';
+import { ProjectEditorDialog } from './ui/ProjectEditorDialog.js?v=chart-gauge-editor-i18n-20260709-1';
 import { GatewayConfigDialog } from './ui/GatewayConfigDialog.js?v=multi-udp-gateway-routing-20260619-2';
 import { runDocCaptureScenario } from './utils/docCapture.js?v=doc-capture-20260424-1';
 

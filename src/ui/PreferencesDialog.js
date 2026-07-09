@@ -16,6 +16,9 @@ export class PreferencesDialog {
   open() {
     if (this._el) this.close();
     const zh = appState.locale === 'zh-CN';
+    const isDesktop = !!window.memsCmsDesktop?.update;
+    const checkUpdateText = zh ? '\u68c0\u67e5\u66f4\u65b0' : 'Check for Updates';
+    const checkingUpdateText = zh ? '\u6b63\u5728\u68c0\u67e5\u66f4\u65b0...' : 'Checking for updates...';
 
     this._el = document.createElement('div');
     this._el.className = 'modal-overlay animate-fadeIn';
@@ -87,6 +90,7 @@ export class PreferencesDialog {
             </div>
           </div>
         </div>
+        ${isDesktop ? `<div class="editor-form-section" style="margin:0 24px 16px"><button class="btn" id="pref-check-update">${checkUpdateText}</button></div>` : ''}
         <div class="modal-footer">
           <button class="btn" id="pref-reset">${t('common.reset')}</button>
           <button class="btn btn-primary" id="pref-save">${t('preferences.saveClose')}</button>
@@ -108,6 +112,21 @@ export class PreferencesDialog {
         if (error?.name !== 'AbortError') {
           eventBus.emit('toast', { type: 'error', message: t('messages.csvSaveFailed', { error: error.message || error }) });
         }
+      }
+    });
+
+    this._el.querySelector('#pref-check-update')?.addEventListener('click', async (event) => {
+      const button = event.currentTarget;
+      const oldText = button.textContent;
+      button.disabled = true;
+      button.textContent = checkingUpdateText;
+      try {
+        await window.memsCmsDesktop.update.check();
+      } catch (error) {
+        eventBus.emit('toast', { type: 'error', message: error?.message || String(error) });
+      } finally {
+        button.disabled = false;
+        button.textContent = oldText;
       }
     });
 

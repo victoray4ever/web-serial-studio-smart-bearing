@@ -24,6 +24,8 @@ export class GaugeWidget extends WidgetBase {
     this._dirty = false;
     this._history = [];
     this._rawHistory = [];
+    this._resizeObserver = null;
+    this._devicePixelRatio = Math.min(window.devicePixelRatio || 1, 2.5);
   }
 
   _theme(name, fallback = '') {
@@ -33,7 +35,7 @@ export class GaugeWidget extends WidgetBase {
   _render(body) {
     body.innerHTML = `
       <div class="gauge-container">
-        <canvas class="gauge-canvas" width="200" height="120"></canvas>
+        <canvas class="gauge-canvas"></canvas>
         <div class="gauge-value">0${this._units ? ` ${this._units}` : ''}</div>
         <div class="gauge-range">
           <span>${this._min}${this._units ? ` ${this._units}` : ''}</span><span>${this._max}${this._units ? ` ${this._units}` : ''}</span>
@@ -42,7 +44,31 @@ export class GaugeWidget extends WidgetBase {
     this._canvas = body.querySelector('canvas');
     this._ctx = this._canvas.getContext('2d');
     this._valueEl = body.querySelector('.gauge-value');
+    this._resizeCanvas();
+    this._resizeObserver = new ResizeObserver(() => {
+      this._resizeCanvas();
+      this._drawGauge(this._value);
+    });
+    this._resizeObserver.observe(body.querySelector('.gauge-container'));
     this._drawGauge(0);
+  }
+
+  _resizeCanvas() {
+    if (!this._canvas || !this._ctx) return;
+    const container = this._canvas.closest('.gauge-container');
+    const rect = container?.getBoundingClientRect();
+    const cssWidth = Math.max(220, Math.min(360, (rect?.width || 280) - 24));
+    const cssHeight = Math.max(132, Math.min(220, Math.round(cssWidth * 0.58)));
+    const dpr = this._devicePixelRatio;
+    const width = Math.round(cssWidth * dpr);
+    const height = Math.round(cssHeight * dpr);
+    this._canvas.style.width = `${cssWidth}px`;
+    this._canvas.style.height = `${cssHeight}px`;
+    if (this._canvas.width !== width || this._canvas.height !== height) {
+      this._canvas.width = width;
+      this._canvas.height = height;
+    }
+    this._ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
   _subscribe() {
@@ -109,11 +135,13 @@ export class GaugeWidget extends WidgetBase {
     const ctx = this._ctx;
     if (!canvas || !ctx) return;
 
-    const W = canvas.width, H = canvas.height;
+    ctx.setTransform(this._devicePixelRatio, 0, 0, this._devicePixelRatio, 0, 0);
+    const W = canvas.clientWidth || (canvas.width / this._devicePixelRatio);
+    const H = canvas.clientHeight || (canvas.height / this._devicePixelRatio);
     ctx.clearRect(0, 0, W, H);
 
-    const cx = W / 2, cy = H - 10;
-    const r = Math.min(W / 2, H) - 16;
+    const cx = W / 2, cy = H - 18;
+    const r = Math.max(56, Math.min(W / 2 - 26, H - 28));
     const startAngle = Math.PI;
     const endAngle = 0;
     const fraction = Math.max(0, Math.min(1, (value - this._min) / (this._max - this._min)));
@@ -129,11 +157,17 @@ export class GaugeWidget extends WidgetBase {
     const scaleText = this._theme('--gauge-scale-text', '#94a3b8');
     const uiFont = this._theme('--font-sans', 'Helvetica, Arial, "Microsoft YaHei", sans-serif');
 
-    // Track
+    ctx.beginPath();
+    ctx.arc(cx, cy, r + 10, startAngle, endAngle, false);
+    ctx.strokeStyle = this._theme('--gauge-rim', 'rgba(100,116,139,0.24)');
+    ctx.lineWidth = 1.4;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
     ctx.beginPath();
     ctx.arc(cx, cy, r, startAngle, endAngle, false);
     ctx.strokeStyle = trackColor;
-    ctx.lineWidth = 14;
+    ctx.lineWidth = 13;
     ctx.lineCap = 'round';
     ctx.stroke();
 
@@ -143,11 +177,11 @@ export class GaugeWidget extends WidgetBase {
     ctx.lineWidth = 20;
     ctx.stroke();
 
-    for (let i = 0; i <= 6; i += 1) {
-      const tickAngle = startAngle + (i / 6) * Math.PI;
-      const isMajor = i === 0 || i === 3 || i === 6;
-      const outer = r + 4;
-      const inner = isMajor ? r - 13 : r - 8;
+    for (let i = 0; i <= 20; i += 1) {
+      const tickAngle = startAngle + (i / 20) * Math.PI;
+      const isMajor = i % 5 === 0;
+      const outer = r + 7;
+      const inner = isMajor ? r - 14 : r - 7;
       const x1 = cx + outer * Math.cos(tickAngle);
       const y1 = cy + outer * Math.sin(tickAngle);
       const x2 = cx + inner * Math.cos(tickAngle);
@@ -157,7 +191,7 @@ export class GaugeWidget extends WidgetBase {
       ctx.moveTo(x1, y1);
       ctx.lineTo(x2, y2);
       ctx.strokeStyle = isMajor ? strongTickColor : tickColor;
-      ctx.lineWidth = isMajor ? 1.6 : 1;
+      ctx.lineWidth = isMajor ? 1.6 : 0.9;
       ctx.stroke();
     }
 
@@ -182,7 +216,7 @@ export class GaugeWidget extends WidgetBase {
       ctx.beginPath();
       ctx.arc(cx, cy, r, startAngle, currentAngle, false);
       ctx.strokeStyle = grad;
-      ctx.lineWidth = 14;
+      ctx.lineWidth = 13;
       ctx.lineCap = 'round';
       ctx.stroke();
 
@@ -190,27 +224,32 @@ export class GaugeWidget extends WidgetBase {
       ctx.beginPath();
       ctx.arc(cx, cy, r, startAngle, currentAngle, false);
       ctx.strokeStyle = color + '30';
-      ctx.lineWidth = 22;
+      ctx.lineWidth = 20;
       ctx.stroke();
     }
 
     // Needle
     const needleAngle = startAngle + fraction * Math.PI;
-    const nx = cx + (r - 6) * Math.cos(needleAngle);
-    const ny = cy + (r - 6) * Math.sin(needleAngle);
+    const nx = cx + (r - 9) * Math.cos(needleAngle);
+    const ny = cy + (r - 9) * Math.sin(needleAngle);
+    const tailX = cx - 15 * Math.cos(needleAngle);
+    const tailY = cy - 15 * Math.sin(needleAngle);
     ctx.beginPath();
-    ctx.moveTo(cx, cy);
+    ctx.moveTo(tailX, tailY);
     ctx.lineTo(nx, ny);
     ctx.strokeStyle = needleColor;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2.2;
     ctx.lineCap = 'round';
     ctx.stroke();
 
     // Center dot
     ctx.beginPath();
-    ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+    ctx.arc(cx, cy, 6, 0, Math.PI * 2);
     ctx.fillStyle = centerColor;
     ctx.fill();
+    ctx.strokeStyle = this._theme('--gauge-center-ring', 'rgba(71,85,105,0.28)');
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
 
     // Update value text
     if (this._valueEl) {
@@ -229,6 +268,7 @@ export class GaugeWidget extends WidgetBase {
 
   destroy() {
     if (this._raf) cancelAnimationFrame(this._raf);
+    this._resizeObserver?.disconnect();
     super.destroy();
   }
 }

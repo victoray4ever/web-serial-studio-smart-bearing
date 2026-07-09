@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('memsCmsDesktop', {
     electron: process.versions.electron,
     node: process.versions.node
   },
+  update: {
+    check: () => ipcRenderer.invoke('app:update:check')
+  },
   mqtt: {
     connect: (options) => ipcRenderer.invoke('mqtt-tcp:connect', options),
     publish: (options) => ipcRenderer.invoke('mqtt-tcp:publish', options),

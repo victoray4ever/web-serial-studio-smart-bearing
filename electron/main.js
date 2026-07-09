@@ -1,11 +1,15 @@
-const { app, BrowserWindow, Menu, shell, session, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, shell, session, ipcMain, dialog } = require('electron');
 const path = require('path');
 const mqtt = require('mqtt');
+const { autoUpdater } = require('electron-updater');
 const { startIntegratedUdpGateway } = require('./udpGateway');
 
 const isSmokeTest = process.env.ELECTRON_SMOKE_TEST === '1';
+const isDevMode = !app.isPackaged;
 let udpGatewayServer = null;
 const mqttSessions = new Map();
+let mainWindow = null;
+let updateCheckInProgress = false;
 
 function ipcPayloadToBuffer(payload, payloadBase64) {
   if (payloadBase64) return Buffer.from(String(payloadBase64), 'base64');
@@ -465,6 +469,86 @@ function configureSerialPermissions() {
   });
 }
 
+function setupAutoUpdater() {
+  if (isSmokeTest || isDevMode) return;
+
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = false;
+
+  autoUpdater.on('update-available', async (info) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    const version = info?.version ? ` v${info.version}` : '';
+    const result = await dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: '发现新版本',
+      message: `发现 MEMS-CMS${version}，是否现在下载更新？`,
+      detail: '下载完成后会再次询问是否立即重启并安装。当前采集任务不会被自动中断。',
+      buttons: ['下载更新', '稍后再说'],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true
+    });
+    if (result.response === 0) {
+      autoUpdater.downloadUpdate().catch((error) => {
+        dialog.showErrorBox('更新下载失败', error?.message || String(error));
+      });
+    }
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    if (updateCheckInProgress && mainWindow && !mainWindow.isDestroyed()) {
+      dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: '已是最新版本',
+        message: '当前 MEMS-CMS 已经是最新版本。',
+        buttons: ['确定'],
+        noLink: true
+      });
+    }
+    updateCheckInProgress = false;
+  });
+
+  autoUpdater.on('update-downloaded', async (info) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    const version = info?.version ? ` v${info.version}` : '';
+    const result = await dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: '更新已下载',
+      message: `MEMS-CMS${version} 已下载完成，是否立即重启并安装？`,
+      detail: '如果正在采集或保存数据，请先保存当前工作，再选择重启安装。',
+      buttons: ['立即重启安装', '下次启动再安装'],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true
+    });
+    if (result.response === 0) {
+      autoUpdater.quitAndInstall(false, true);
+    }
+  });
+
+  autoUpdater.on('error', (error) => {
+    updateCheckInProgress = false;
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    dialog.showErrorBox('更新检查失败', error?.message || String(error));
+  });
+
+  ipcMain.handle('app:update:check', async () => {
+    updateCheckInProgress = true;
+    await autoUpdater.checkForUpdates();
+    return { ok: true };
+  });
+}
+
+function checkForUpdatesQuietly() {
+  if (isSmokeTest || isDevMode) return;
+  setTimeout(() => {
+    updateCheckInProgress = false;
+    autoUpdater.checkForUpdates().catch(() => {
+      updateCheckInProgress = false;
+    });
+  }, 5000);
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1440,
@@ -590,14 +674,19 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  setupAutoUpdater();
   setupMqttIpc();
   configureSerialPermissions();
   udpGatewayServer = startIntegratedUdpGateway({ rootDir: path.join(__dirname, '..') });
   Menu.setApplicationMenu(null);
-  createWindow();
+  mainWindow = createWindow();
+  checkForUpdatesQuietly();
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0) {
+      mainWindow = createWindow();
+      checkForUpdatesQuietly();
+    }
   });
 });
 
