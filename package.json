@@ -1,6 +1,6 @@
 {
   "name": "mems-cms",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "MEMS-CMS desktop application.",
   "productName": "MEMS-CMS",
   "main": "electron/main.js",

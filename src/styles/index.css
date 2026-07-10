@@ -45,8 +45,13 @@ html, body {
 
 /* ── Selection ── */
 ::selection {
-  background: rgba(0, 71, 105, 0.3);
-  color: var(--text-primary);
+  background: rgba(0, 71, 105, 0.82);
+  color: #ffffff;
+}
+
+html[data-theme='dark'] ::selection {
+  background: rgba(24, 144, 191, 0.86);
+  color: #ffffff;
 }
 
 /* ── App Root ── */

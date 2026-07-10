@@ -46,8 +46,8 @@ export class PreferencesDialog {
               <div class="form-row">
                 <div class="form-label">${t('common.theme')}</div>
                 <select class="form-select" id="pref-theme">
-                  <option value="dark" ${appState.theme === 'dark' ? 'selected' : ''}>${t('common.darkTheme')}</option>
                   <option value="light" ${appState.theme === 'light' ? 'selected' : ''}>${t('common.lightTheme')}</option>
+                  <option value="dark" ${appState.theme === 'dark' ? 'selected' : ''}>${t('common.darkTheme')}</option>
                 </select>
               </div>
             </div>
@@ -75,7 +75,7 @@ export class PreferencesDialog {
               <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
                 <img src="src/assets/cms-icon.png" alt="MEMS-CMS" style="width:42px;height:42px;border-radius:10px;box-shadow:0 4px 14px rgba(15,23,42,.12)">
                 <div>
-                  <div><strong style="color:var(--text-primary);font-size:15px">MEMS-CMS</strong> <span style="color:var(--text-muted)">v1.0.0</span></div>
+                  <div><strong style="color:var(--text-primary);font-size:15px">MEMS-CMS</strong> <span style="color:var(--text-muted)">v1.0.2</span></div>
                   <div>${zh ? 'MEMS 实验室状态监测上位机系统' : 'MEMS Condition Monitoring System desktop application'}</div>
                 </div>
               </div>
@@ -133,7 +133,7 @@ export class PreferencesDialog {
     this._el.querySelector('#pref-reset').addEventListener('click', () => {
       appState.points = 100;
       appState.locale = 'zh-CN';
-      appState.theme = 'dark';
+      appState.theme = 'light';
       appState.csvExportEnabled = true;
       appState.consoleExportEnabled = false;
       applyTheme();
@@ -144,7 +144,7 @@ export class PreferencesDialog {
 
     this._el.querySelector('#pref-save').addEventListener('click', () => {
       const nextLocale = this._el.querySelector('#pref-language')?.value || 'zh-CN';
-      const nextTheme = this._el.querySelector('#pref-theme')?.value || 'dark';
+      const nextTheme = this._el.querySelector('#pref-theme')?.value || 'light';
       const requiresReload = nextLocale !== appState.locale || nextTheme !== appState.theme;
 
       appState.points = parseInt(this._el.querySelector('#pref-points')?.value, 10) || 100;

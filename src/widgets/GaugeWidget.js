@@ -77,7 +77,7 @@ export class GaugeWidget extends WidgetBase {
       const ds = datasetFromFrame(frame, this._datasetRef, this._datasetIndex);
       if (!ds) return;
       const v = typeof ds.value === 'number' ? ds.value : parseFloat(ds.value) || 0;
-      this._appendHistory(frame, v);
+      this._appendHistory(frame, v, ds);
       if (v !== this._value) {
         this._value = v;
         this._dirty = true;
@@ -91,7 +91,7 @@ export class GaugeWidget extends WidgetBase {
 
   _supportsExport() { return true; }
 
-  _appendHistory(frame, value) {
+  _appendHistory(frame, value, dataset = null) {
     const timestamp = new Date(frame.timestamp || Date.now()).toISOString();
     this._history.push({ timestamp, value });
     this._rawHistory.push({
@@ -99,7 +99,7 @@ export class GaugeWidget extends WidgetBase {
       title: frame.title || this.config.title || '',
       sourceId: frame.sourceId || '',
       topic: frame.topic || '',
-      raw: frame.raw || ''
+      raw: this._rawHexForDataset(frame, dataset)
     });
     const limit = 5000;
     if (this._history.length > limit) this._history.splice(0, this._history.length - limit);
@@ -124,10 +124,19 @@ export class GaugeWidget extends WidgetBase {
     return {
       filename: `${this._safeFileName(this.config.title)}_raw_frames.csv`,
       rows: [
-        ['timestamp', 'sourceId', 'topic', 'frameTitle', 'raw'],
-        ...this._rawHistory.map((item) => [item.timestamp, item.sourceId, item.topic, item.title, item.raw])
+        ['timestamp', 'rawHex'],
+        ...this._rawHistory.map((item) => [item.timestamp, item.raw])
       ]
     };
+  }
+
+  _rawHexForDataset(frame, dataset) {
+    if (dataset?.raw !== undefined && dataset.raw !== null && dataset.raw !== '') return String(dataset.raw);
+    if (dataset?.rawHex !== undefined && dataset.rawHex !== null && dataset.rawHex !== '') return String(dataset.rawHex);
+    if (Array.isArray(dataset?.rawBytes)) {
+      return dataset.rawBytes.map((byte) => Number(byte).toString(16).padStart(2, '0').toUpperCase()).join(' ');
+    }
+    return frame.raw || '';
   }
 
   _drawGauge(value) {

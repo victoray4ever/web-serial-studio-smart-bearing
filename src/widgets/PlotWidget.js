@@ -274,11 +274,10 @@ export class PlotWidget extends WidgetBase {
     // the same local dataset indexes.
     if (!receivedDatasets.some(Boolean)) return;
 
-    this._appendRawHistory(frame);
-
     receivedDatasets.forEach((ds, i) => {
       this._lastFrameDatasets[i] = ds || null;
       if (!ds) return;
+      this._appendRawHistory(frame, ds, i);
       if (ds && ds.buffer && Array.isArray(ds.buffer)) {
         this._data[i].push(...ds.buffer);
         appendedCount = Math.max(appendedCount, ds.buffer.length);
@@ -303,13 +302,22 @@ export class PlotWidget extends WidgetBase {
     this._scheduleChartUpdate();
   }
 
-  _appendRawHistory(frame) {
+  _rawHexForDataset(frame, dataset) {
+    if (dataset?.raw !== undefined && dataset.raw !== null && dataset.raw !== '') return String(dataset.raw);
+    if (dataset?.rawHex !== undefined && dataset.rawHex !== null && dataset.rawHex !== '') return String(dataset.rawHex);
+    if (Array.isArray(dataset?.rawBytes)) {
+      return dataset.rawBytes.map((byte) => Number(byte).toString(16).padStart(2, '0').toUpperCase()).join(' ');
+    }
+    return frame.raw || '';
+  }
+
+  _appendRawHistory(frame, dataset, datasetSlot = 0) {
     this._rawHistory.push({
       timestamp: new Date(frame.timestamp || Date.now()).toISOString(),
-      title: frame.title || this.config.title || '',
+      dataset: this._datasetLabels[datasetSlot] || dataset?.title || this.config.title || '',
       sourceId: frame.sourceId || '',
       topic: frame.topic || '',
-      raw: frame.raw || ''
+      raw: this._rawHexForDataset(frame, dataset)
     });
     const limit = Math.max(1000, appState.points * 4);
     if (this._rawHistory.length > limit) this._rawHistory.splice(0, this._rawHistory.length - limit);
@@ -340,8 +348,9 @@ export class PlotWidget extends WidgetBase {
     return {
       filename: `${this._safeFileName(this.config.title)}_raw_frames.csv`,
       rows: [
-        ['timestamp', 'sourceId', 'topic', 'frameTitle', 'raw'],
-        ...this._rawHistory.map((item) => [item.timestamp, item.sourceId, item.topic, item.title, item.raw])
+        ...(this._datasetIndices.length > 1
+          ? [['timestamp', 'dataset', 'rawHex'], ...this._rawHistory.map((item) => [item.timestamp, item.dataset, item.raw])]
+          : [['timestamp', 'rawHex'], ...this._rawHistory.map((item) => [item.timestamp, item.raw])])
       ]
     };
   }

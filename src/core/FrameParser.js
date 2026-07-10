@@ -215,6 +215,91 @@ export class FrameParser {
     return map;
   }
 
+  _typeByteLength(type = 'uint8') {
+    const normalized = String(type || 'uint8').toLowerCase();
+    if (normalized.endsWith('8')) return 1;
+    if (normalized.endsWith('16')) return 2;
+    if (normalized.endsWith('24')) return 3;
+    if (normalized.endsWith('32')) return 4;
+    if (normalized.endsWith('64')) return 8;
+    return 1;
+  }
+
+  _rawContentToBytes(raw = '') {
+    if (raw instanceof Uint8Array) return Array.from(raw);
+    if (Array.isArray(raw)) return raw.map((value) => Number(value) & 0xFF);
+    const cleanHex = String(raw || '').replace(/0x/gi, '').replace(/[^0-9a-fA-F]/g, '');
+    if (cleanHex.length >= 2 && cleanHex.length % 2 === 0) {
+      const out = [];
+      for (let i = 0; i < cleanHex.length; i += 2) out.push(parseInt(cleanHex.slice(i, i + 2), 16));
+      return out;
+    }
+    return [];
+  }
+
+  _bytesToHexString(bytes = []) {
+    return bytes.map((byte) => Number(byte).toString(16).padStart(2, '0').toUpperCase()).join(' ');
+  }
+
+  _projectRawBySourceField(raw) {
+    const bytes = this._rawContentToBytes(raw);
+    const fields = this._project()?.protocolFields;
+    const map = new Map();
+    if (!bytes.length || !Array.isArray(fields)) return map;
+
+    const sliceHex = (offset, length) => this._bytesToHexString(bytes.slice(Math.max(0, offset), Math.max(0, offset) + Math.max(0, length)));
+
+    fields.forEach((field) => {
+      const name = String(field?.name || '');
+      if (!name) return;
+      const kind = field.kind || 'byte';
+      if (kind === 'frameHeader' || kind === 'frameTail' || kind === 'checksum') return;
+
+      const offset = Math.max(0, Number(field.offset) || 0);
+      const channels = (kind === 'fixedArray' || kind === 'variableArray')
+        ? Math.max(1, Number(field.channels) || 1)
+        : 1;
+      const channelDefs = Array.from({ length: channels }, (_, index) => {
+        const configured = Array.isArray(field.channelDefs) ? field.channelDefs[index] : null;
+        return configured || { type: field.type || 'uint8' };
+      });
+      const channelSizes = channelDefs.map((channel) => this._typeByteLength(channel.type || field.type));
+      const groupSize = channelSizes.reduce((sum, size) => sum + size, 0) || this._typeByteLength(field.type);
+      const explicitLength = Math.max(0, Number(field.byteLength) || 0);
+      const count = explicitLength > 0
+        ? Math.max(1, Math.floor(explicitLength / groupSize))
+        : Math.max(1, Number(field.count) || 1);
+
+      if (kind === 'fixedArray' || kind === 'variableArray') {
+        map.set(name, sliceHex(offset, explicitLength || count * groupSize));
+        if (field.arrayOrder === 'interleaved') {
+          const channelBytes = Array.from({ length: channels }, () => []);
+          for (let sample = 0; sample < count; sample += 1) {
+            let sampleOffset = offset + sample * groupSize;
+            for (let channel = 0; channel < channels; channel += 1) {
+              const size = channelSizes[channel];
+              channelBytes[channel].push(...bytes.slice(sampleOffset, sampleOffset + size));
+              sampleOffset += size;
+            }
+          }
+          channelBytes.forEach((items, channel) => map.set(`${name}_ch${channel + 1}`, this._bytesToHexString(items)));
+        } else {
+          let channelOffset = offset;
+          channelSizes.forEach((size, channel) => {
+            map.set(`${name}_ch${channel + 1}`, sliceHex(channelOffset, count * size));
+            channelOffset += count * size;
+          });
+        }
+        return;
+      }
+
+      const size = this._typeByteLength(field.type) * Math.max(1, Number(field.count) || 1);
+      map.set(name, sliceHex(offset, size));
+    });
+
+    return map;
+  }
+
   _ensureProjectParserWorker() {
     const code = this._projectFrameParserCode();
     if (!code) return false;
@@ -327,18 +412,21 @@ export class FrameParser {
     const frames = Array.isArray(result?.frames) ? result.frames : [];
     const indexBase = this._projectParserIndexBase();
     const datasetByIndex = this._projectDatasetByIndex();
+    const rawBySourceField = this._projectRawBySourceField(raw);
 
     frames.forEach((frame, frameOffset) => {
       const datasets = [];
       (frame.datasets || []).forEach((dataset, i) => {
         const index = Number.isInteger(dataset.index) ? dataset.index : i + indexBase;
         const configured = datasetByIndex.get(index);
+        const configuredRaw = configured?.sourceField ? rawBySourceField.get(configured.sourceField) : '';
         datasets[index] = {
           title: dataset.title || configured?.title || `Channel ${index + 1}`,
           units: dataset.units ?? configured?.units ?? '',
           index,
           sourceId: this._sourceId(),
           value: typeof dataset.value === 'number' ? dataset.value : parseFloat(dataset.value) || 0,
+          raw: dataset.raw || dataset.rawHex || configuredRaw || '',
           ...(Array.isArray(dataset.buffer) ? { buffer: dataset.buffer } : {}),
           ...(Number.isFinite(Number(dataset.sampleRate)) && Number(dataset.sampleRate) > 0
             ? { sampleRate: Number(dataset.sampleRate) }

@@ -15,11 +15,7 @@ export const defaultProject = () => ({
     {
       title: 'Sensor Data',
       widget: 'MultiPlot',
-      datasets: [
-        { title: 'Temperature', index: 0, units: '°C', widget: 'Gauge', min: -20, max: 80, alarm: 50, led: false, fft: false, plot: true, bar: true, gauge: true, compass: false },
-        { title: 'Humidity', index: 1, units: '%', widget: 'Bar', min: 0, max: 100, alarm: 85, led: false, fft: false, plot: true, bar: true, gauge: false, compass: false },
-        { title: 'Pressure', index: 2, units: 'hPa', widget: 'Gauge', min: 900, max: 1100, alarm: 0, led: false, fft: false, plot: true, bar: false, gauge: true, compass: false },
-      ]
+      datasets: []
     }
   ]
 });
@@ -170,7 +166,9 @@ export class ProjectModel {
               gauge: d.gauge ?? groupWidget === 'Gauges',
               compass: d.compass ?? groupWidget === 'Compass',
               sourceField: d.sourceField || '',
-              formula: d.formula || ''
+              formula: d.formula || '',
+              protocolGenerated: !!d.protocolGenerated,
+              protocolSyncIndex: Number.isInteger(Number(d.protocolSyncIndex)) ? Number(d.protocolSyncIndex) : undefined
             };
           })
         };

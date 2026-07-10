@@ -252,14 +252,14 @@ const FORMULA_TEMPLATES = {
   adc24Voltage: 'raw * 2.5 / 8388608',
   adc24Bipolar: 'raw * 5 / 16777216',
   milliVolt: 'raw / 1000',
-  pt100: '(() => {\n  const A = 3.9083e-3;\n  const B = -5.775e-7;\n  const r0 = 100;\n  const resistance = raw;\n  const d = A * A - 4 * B * (1 - resistance / r0);\n  return d < 0 ? NaN : (-A + Math.sqrt(d)) / (2 * B);\n})()',
+  pt100: '(() => {\n  const A = 3.9083e-3;\n  const B = -5.775e-7;\n  const r0 = 100;\n  const resistance = Math.abs(raw) * 0.0002980232;\n  const d = A * A - 4 * B * (1 - resistance / r0);\n  return d < 0 ? NaN : (-A + Math.sqrt(d)) / (2 * B);\n})()',
   arrayOffset: 'raw - fields.zero_offset',
   custom: ''
 };
 
 const CALIBRATION_PRESETS = [
   { key: 'adc24_2v5', nameZh: '24bit ADC 2.5V', nameEn: '24-bit ADC 2.5V', formula: 'raw * 2.5 / 8388608.0', unit: 'V' },
-  { key: 'pt100_code', nameZh: 'PT100 Code 温度', nameEn: 'PT100 Code Temperature', formula: '(() => {\n  const A = 3.9083e-3;\n  const B = -5.775e-7;\n  const ratio = raw * 0.0002980232 / 100;\n  const d = A * A - 4 * B * (1 - ratio);\n  return d < 0 ? NaN : (-A + Math.sqrt(d)) / (2 * B);\n})()', unit: '°C' },
+  { key: 'pt100_code', nameZh: 'PT100 Code 温度', nameEn: 'PT100 Code Temperature', formula: '(() => {\n  const A = 3.9083e-3;\n  const B = -5.775e-7;\n  const r0 = 100;\n  const resistance = Math.abs(raw) * 0.0002980232;\n  const d = A * A - 4 * B * (1 - resistance / r0);\n  return d < 0 ? NaN : (-A + Math.sqrt(d)) / (2 * B);\n})()', unit: '°C' },
   { key: 'raw_offset_scale', nameZh: '零点与比例标定', nameEn: 'Offset / Scale Calibration', formula: '(raw - (params.zero ?? 0)) * (params.scale ?? 1)', unit: '' }
 ];
 
@@ -480,6 +480,8 @@ function extendProtocolLabels(labels, locale) {
     autoOffset: zh ? '\u81ea\u52a8\u504f\u79fb' : 'Auto Offset',
     sortByOffset: zh ? '\u6309\u504f\u79fb\u6392\u5e8f' : 'Sort by Offset',
     generateParser: zh ? '\u751f\u6210\u89e3\u6790\u5668' : 'Generate Parser',
+    moveUp: zh ? '\u4e0a\u79fb' : 'Move Up',
+    moveDown: zh ? '\u4e0b\u79fb' : 'Move Down',
     duplicate: zh ? '\u590d\u5236' : 'Duplicate',
     openProject: zh ? '\u6253\u5f00\u9879\u76ee' : 'Open Project',
     saveProject: zh ? '\u4fdd\u5b58\u9879\u76ee' : 'Save Project',
@@ -1095,8 +1097,20 @@ export class ProjectEditorDialog {
   _refreshBody() {
     const body = this._el?.querySelector('#project-editor-body');
     if (!body) return;
+    const bodyScrollTop = body.scrollTop;
+    const jcomScrollTop = body.querySelector('#jcom-field-list')?.scrollTop ?? null;
+    const jcomPropScrollTop = body.querySelector('.jcom-prop-pane')?.scrollTop ?? null;
     body.innerHTML = this._renderBody();
     this._bindBodyEvents();
+    body.scrollTop = bodyScrollTop;
+    if (jcomScrollTop !== null) {
+      const list = body.querySelector('#jcom-field-list');
+      if (list) list.scrollTop = jcomScrollTop;
+    }
+    if (jcomPropScrollTop !== null) {
+      const pane = body.querySelector('.jcom-prop-pane');
+      if (pane) pane.scrollTop = jcomPropScrollTop;
+    }
   }
 
   _bindBodyEvents() {
@@ -1669,6 +1683,18 @@ export class ProjectEditorDialog {
       });
     });
 
+    this._el?.querySelectorAll('[data-jcom-move]').forEach((node) => {
+      node.addEventListener('click', (event) => {
+        event.stopPropagation();
+        this._moveJcomField(Number(node.dataset.jcomMove) || 0);
+      });
+    });
+
+    this._el?.querySelector('[data-jcom-duplicate]')?.addEventListener('click', (event) => {
+      event.stopPropagation();
+      this._duplicateJcomField();
+    });
+
     this._el?.querySelectorAll('[data-jcom-inline-value]').forEach((node) => {
       node.addEventListener('click', (event) => event.stopPropagation());
       node.addEventListener('input', () => {
@@ -1714,6 +1740,10 @@ export class ProjectEditorDialog {
         if (node.type === 'radio' && !node.checked) return;
         const value = node.type === 'checkbox' ? node.checked : node.value;
         this._setJcomFieldValue(key, value);
+        if (key === 'panelDisplay') {
+          this._syncProtocolPanelDatasets(this._draft);
+          this._refreshBody();
+        }
       });
     });
 
@@ -1866,6 +1896,45 @@ export class ProjectEditorDialog {
     this._refreshBody();
   }
 
+  _moveJcomField(direction) {
+    if (!Array.isArray(this._draft.protocolFields) || !this._draft.protocolFields.length) return;
+    const index = this._selectedJcomFieldIndex();
+    const nextIndex = index + (direction < 0 ? -1 : 1);
+    if (nextIndex < 0 || nextIndex >= this._draft.protocolFields.length) return;
+    const fields = this._draft.protocolFields;
+    [fields[index], fields[nextIndex]] = [fields[nextIndex], fields[index]];
+    this._jcomFieldIndex = nextIndex;
+    this._autoAssignFieldOffsets();
+    this._syncProtocolPanelDatasets(this._draft);
+    this._refreshBody();
+  }
+
+  _duplicateJcomField() {
+    if (!Array.isArray(this._draft.protocolFields) || !this._draft.protocolFields.length) return;
+    const index = this._selectedJcomFieldIndex();
+    const source = this._draft.protocolFields[index];
+    if (!source) return;
+    const copy = cloneProject(source);
+    const baseName = this._safeFieldName(copy.name || copy.title || `field${index + 1}`);
+    copy.name = this._uniqueProtocolFieldName(`${baseName}_copy`);
+    copy.title = `${copy.title || copy.name} Copy`;
+    this._draft.protocolFields.splice(index + 1, 0, copy);
+    this._jcomFieldIndex = index + 1;
+    this._autoAssignFieldOffsets();
+    this._syncProtocolPanelDatasets(this._draft);
+    this._refreshBody();
+  }
+
+  _uniqueProtocolFieldName(name) {
+    const fields = Array.isArray(this._draft.protocolFields) ? this._draft.protocolFields : [];
+    const used = new Set(fields.map((field) => String(field?.name || '')));
+    const base = this._safeFieldName(name || 'field');
+    if (!used.has(base)) return base;
+    let suffix = 2;
+    while (used.has(`${base}_${suffix}`)) suffix += 1;
+    return `${base}_${suffix}`;
+  }
+
   _selectedJcomFieldIndex() {
     const fields = this._draft?.protocolFields || [];
     const index = Math.max(0, Number(this._jcomFieldIndex) || 0);
@@ -1908,6 +1977,11 @@ export class ProjectEditorDialog {
       }
     } else if (key === 'offset') {
       field.offset = Math.max(0, Number(value) || 0);
+    } else if (key === 'type') {
+      field.type = FIELD_TYPES.includes(value) ? value : 'uint16';
+      if (field.kind === 'fixedArray' || field.kind === 'variableArray') {
+        this._syncJcomArrayByteLength(field);
+      }
     } else if (key === 'endian') {
       field.endian = value === true || String(value).toUpperCase() === 'BE' ? 'BE' : 'LE';
     } else if (key === 'arrayOrderByIndex') {
@@ -1919,6 +1993,9 @@ export class ProjectEditorDialog {
       field[key] = value;
     }
     if (key === 'title') field.name = this._safeFieldName(value, field.name);
+    if (key === 'panelDisplay' || key === 'title' || key === 'type' || key === 'formula' || key === 'units') {
+      this._syncProtocolPanelDatasets(this._draft);
+    }
     if (key === 'fixedValue') this._syncFrameDelimiterFromField(field);
     if (field.kind === 'frameLength') this._syncFrameLengthFromField(field);
     if (field.kind === 'checksum') {
@@ -2620,7 +2697,8 @@ export class ProjectEditorDialog {
   }
 
   _datasetSyncKey(dataset) {
-    return `${dataset?.sourceField || ''}|${Number(dataset?.index) || 0}`;
+    const index = dataset?.protocolSyncIndex ?? dataset?.index ?? 0;
+    return `${dataset?.sourceField || ''}|${Number(index) || 0}`;
   }
 
   _reindexProjectDatasets(project) {
@@ -2649,6 +2727,15 @@ export class ProjectEditorDialog {
   _syncProtocolPanelDatasets(project) {
     if (!Array.isArray(project.protocolFields) || !project.protocolFields.length) return;
     const desired = project.protocolFields.flatMap((field) => this._displaySourceFieldsForProtocolField(field));
+    const desiredKeys = new Set(desired.map((def, index) => `${def.sourceField}|${index}`));
+
+    (project.groups || []).forEach((group) => {
+      if (!Array.isArray(group.datasets)) group.datasets = [];
+      group.datasets = group.datasets.filter((dataset) => (
+        !dataset.protocolGenerated || desiredKeys.has(this._datasetSyncKey(dataset))
+      ));
+    });
+
     if (!desired.length) return;
 
     if (!project.groups.length) project.groups.push({ title: 'Sensor Data', widget: 'MultiPlot', datasets: [] });
@@ -2674,6 +2761,8 @@ export class ProjectEditorDialog {
         dataset = {
           title: def.title || `Dataset ${index + 1}`,
           index,
+          protocolSyncIndex: index,
+          protocolGenerated: true,
           units: def.units || '',
           widget: 'Plot',
           min: 0,
@@ -2693,6 +2782,8 @@ export class ProjectEditorDialog {
       }
 
       dataset.index = Number.isInteger(Number(dataset.index)) ? Number(dataset.index) : index;
+      dataset.protocolSyncIndex = index;
+      dataset.protocolGenerated = dataset.protocolGenerated ?? true;
       dataset.sourceField = dataset.sourceField || def.sourceField;
       dataset.formula = dataset.formula || def.formula || 'raw';
       dataset.title = dataset.title || def.title || `Dataset ${index + 1}`;
@@ -2841,6 +2932,8 @@ export class ProjectEditorDialog {
     return value;
   };
   const readUnsigned = (offset, length, endian) => readInt(offset, length, false, endian);
+  const toHex = (items) => items.map((byte) => Number(byte & 0xFF).toString(16).padStart(2, '0').toUpperCase()).join(' ');
+  const rawSlice = (offset, length) => toHex(bytes.slice(Math.max(0, offset), Math.max(0, offset) + Math.max(0, length)));
   const validateFrameLength = () => {
     const cfg = validation.frameLength || {};
     if (!cfg.enabled) return true;
@@ -2924,6 +3017,7 @@ export class ProjectEditorDialog {
     return readInt(offset, length, type.startsWith('int'), endian);
   };
   const fields = {};
+  const rawFields = {};
   const applyFormulaValue = (formula, rawValue) => {
     if (!formula) return rawValue;
     const applyOne = (item, index) => {
@@ -2959,13 +3053,19 @@ export class ProjectEditorDialog {
         : Math.max(1, explicitCount || Number(def.count) || 1);
       const channelValues = Array.from({ length: channels }, () => []);
       if (def.arrayOrder === 'interleaved') {
+        const rawChannelBytes = Array.from({ length: channels }, () => []);
         for (let sample = 0; sample < count; sample += 1) {
           let sampleOffset = def.offset + (sample * groupSize);
           for (let channel = 0; channel < channels; channel += 1) {
+            const channelSize = channelSizes[channel];
             channelValues[channel].push(readOne(def, sampleOffset, channelDefs[channel]));
+            rawChannelBytes[channel].push(...bytes.slice(sampleOffset, sampleOffset + channelSize));
             sampleOffset += channelSizes[channel];
           }
         }
+        rawChannelBytes.forEach((items, channelIndex) => {
+          rawFields[\`\${def.name}_ch\${channelIndex + 1}\`] = toHex(items);
+        });
       } else {
         let channelBase = def.offset;
         for (let channel = 0; channel < channels; channel += 1) {
@@ -2973,6 +3073,7 @@ export class ProjectEditorDialog {
           for (let sample = 0; sample < count; sample += 1) {
             channelValues[channel].push(readOne(def, channelBase + (sample * channelSize), channelDefs[channel]));
           }
+          rawFields[\`\${def.name}_ch\${channel + 1}\`] = rawSlice(channelBase, count * channelSize);
           channelBase += count * channelSize;
         }
       }
@@ -2981,12 +3082,14 @@ export class ProjectEditorDialog {
         fields[\`\${def.name}_ch\${channelIndex + 1}\`] = applyFormulaValue(formula, values);
       });
       fields[def.name] = channels === 1 ? fields[\`\${def.name}_ch1\`] : channelValues.map((_, channelIndex) => fields[\`\${def.name}_ch\${channelIndex + 1}\`]);
+      rawFields[def.name] = rawSlice(def.offset, count * groupSize);
       return;
     }
     const values = [];
     for (let i = 0; i < def.count; i += 1) values.push(readOne(def, def.offset + i * length));
     const rawValue = def.count > 1 ? values : values[0];
     fields[def.name] = applyFormulaValue(def.formula, rawValue);
+    rawFields[def.name] = rawSlice(def.offset, Math.max(1, Number(def.count) || 1) * length);
   });
   fields.params = params;
   const datasets = datasetDefs.map((def) => {
@@ -3000,7 +3103,7 @@ export class ProjectEditorDialog {
     };
     const result = Array.isArray(raw) ? raw.map((item, index) => applyFormula(item, index)) : applyFormula(raw, 0);
     const value = Array.isArray(result) ? result[result.length - 1] : result;
-    const dataset = { index: def.index, title: def.title, units: def.units || '', sourceId: def.sourceId || '', value };
+    const dataset = { index: def.index, title: def.title, units: def.units || '', sourceId: def.sourceId || '', value, raw: rawFields[def.sourceField] || '' };
     if (Array.isArray(result)) dataset.buffer = result;
     const fieldSampleRate = Number(fields[def.fftSampleRateField]);
     const sampleRate = Number.isFinite(fieldSampleRate) && fieldSampleRate > 0 ? fieldSampleRate : Number(def.fftSampleRate);
@@ -3356,6 +3459,8 @@ export class ProjectEditorDialog {
   _renderJcomFieldRows(selectedIndex = 0) {
     const fields = Array.isArray(this._draft.protocolFields) ? this._draft.protocolFields : [];
     if (!fields.length) return `<div class="byte-layout-empty">${this._labels.noFields}</div>`;
+    const canMoveUp = selectedIndex > 0;
+    const canMoveDown = selectedIndex < fields.length - 1;
     const rows = fields.map((field, index) => {
       const editable = this._jcomFieldInlineEditable(field);
       const value = this._jcomFieldValuePreview(field);
@@ -3373,9 +3478,9 @@ export class ProjectEditorDialog {
     }).join('');
     return `
       <div class="jcom-list-tools">
-        <button class="btn btn-icon" type="button" disabled>▲</button>
-        <button class="btn btn-icon" type="button" disabled>▼</button>
-        <button class="btn btn-icon" type="button" disabled>▣</button>
+        <button class="btn btn-icon" type="button" data-jcom-move="-1" ${canMoveUp ? '' : 'disabled'} title="${this._escapeAttr(this._labels.moveUp || 'Move Up')}">▲</button>
+        <button class="btn btn-icon" type="button" data-jcom-move="1" ${canMoveDown ? '' : 'disabled'} title="${this._escapeAttr(this._labels.moveDown || 'Move Down')}">▼</button>
+        <button class="btn btn-icon" type="button" data-jcom-duplicate="true" title="${this._escapeAttr(this._labels.duplicate)}">▣</button>
       </div>
       ${rows}`;
   }
@@ -3401,13 +3506,18 @@ export class ProjectEditorDialog {
   _renderJcomFieldProperties(field, index) {
     const isArray = field.kind === 'fixedArray' || field.kind === 'variableArray';
     const isInline = this._jcomFieldInlineEditable(field);
+    const canSelectType = !isArray && !['frameHeader', 'frameTail'].includes(field.kind);
     const showEndian = byteLengthForType(field.type) > 1;
     const endianControl = showEndian
       ? this._renderJcomSelect(this._labels.fieldEndian, 'endian', field.endian || 'BE', BYTE_ORDERS)
       : '';
+    const typeControl = canSelectType
+      ? this._renderJcomSelect(this._labels.fieldType, 'type', field.type || 'uint16', FIELD_TYPES)
+      : '';
     const checksumNames = this._labels.checksumNames || {};
     const commonRows = isArray
       ? `
+        ${typeControl}
         ${this._renderJcomInput(this._labels.fieldCount, 'count', Math.max(1, Number(field.count) || 1), 'number')}
         ${this._renderJcomInput(this._labels.byteCountSetting, 'byteLength', fieldByteSize(field), 'number')}
         ${this._renderJcomSelect(this._labels.dataTransform, 'dataConversion', field.dataConversion || 'FIFO', ['FIFO', 'RAW'])}
@@ -3416,6 +3526,7 @@ export class ProjectEditorDialog {
         ${this._renderJcomInput(this._labels.dataName, 'title', field.title || field.name || `field${index + 1}`)}
       `
       : `
+        ${typeControl}
         ${this._renderJcomInput(this._labels.fieldCount, 'count', Math.max(1, Number(field.count) || 1), 'number')}
         ${this._renderJcomInput(this._labels.byteCountSetting, 'byteLength', fieldByteSize(field), 'number')}
         ${endianControl}

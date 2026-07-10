@@ -61,10 +61,12 @@ export class FftWidget extends WidgetBase {
     this._unsubscribe = eventBus.on('frame:received', (frame) => {
       if (this._destroyed) return;
       let matched = false;
+      const matchedDatasets = [];
       this._datasets.forEach((dataset, index) => {
         const received = datasetFromFrame(frame, dataset, index);
         if (!received) return;
         matched = true;
+        matchedDatasets.push({ dataset, received });
         const incoming = Array.isArray(received.buffer) && received.buffer.length
           ? received.buffer.map(Number).filter(Number.isFinite)
           : [Number(received.value)].filter(Number.isFinite);
@@ -86,20 +88,29 @@ export class FftWidget extends WidgetBase {
 
         this._spectra[index] = this._computeSpectrum(history, dataset, received);
       });
-      if (matched) this._appendRawHistory(frame);
+      if (matched) this._appendRawHistory(frame, matchedDatasets);
       this._scheduleDraw();
     });
   }
 
   _supportsExport() { return true; }
 
-  _appendRawHistory(frame) {
-    this._rawHistory.push({
-      timestamp: new Date(frame.timestamp || Date.now()).toISOString(),
-      title: frame.title || this.config.title || '',
-      sourceId: frame.sourceId || '',
-      topic: frame.topic || '',
-      raw: frame.raw || ''
+  _rawHexForDataset(frame, dataset) {
+    if (dataset?.raw !== undefined && dataset.raw !== null && dataset.raw !== '') return String(dataset.raw);
+    if (dataset?.rawHex !== undefined && dataset.rawHex !== null && dataset.rawHex !== '') return String(dataset.rawHex);
+    if (Array.isArray(dataset?.rawBytes)) {
+      return dataset.rawBytes.map((byte) => Number(byte).toString(16).padStart(2, '0').toUpperCase()).join(' ');
+    }
+    return frame.raw || '';
+  }
+
+  _appendRawHistory(frame, matchedDatasets = []) {
+    matchedDatasets.forEach(({ dataset, received }) => {
+      this._rawHistory.push({
+        timestamp: new Date(frame.timestamp || Date.now()).toISOString(),
+        dataset: dataset?.title || received?.title || this.config.title || '',
+        raw: this._rawHexForDataset(frame, received)
+      });
     });
     if (this._rawHistory.length > 5000) this._rawHistory.splice(0, this._rawHistory.length - 5000);
   }
@@ -147,8 +158,9 @@ export class FftWidget extends WidgetBase {
     return {
       filename: `${this._safeFileName(this.config.title)}_raw_frames.csv`,
       rows: [
-        ['timestamp', 'sourceId', 'topic', 'frameTitle', 'raw'],
-        ...this._rawHistory.map((item) => [item.timestamp, item.sourceId, item.topic, item.title, item.raw])
+        ...(this._datasets.length > 1
+          ? [['timestamp', 'dataset', 'rawHex'], ...this._rawHistory.map((item) => [item.timestamp, item.dataset, item.raw])]
+          : [['timestamp', 'rawHex'], ...this._rawHistory.map((item) => [item.timestamp, item.raw])])
       ]
     };
   }

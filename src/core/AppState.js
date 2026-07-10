@@ -66,7 +66,7 @@ class AppState {
     this._busType = BusType.Serial;
     this._connectionState = ConnectionState.Disconnected;
     this._locale = 'zh-CN';
-    this._theme = 'dark';
+    this._theme = 'light';
     this._project = null;
     this._projectFileName = '';
     this._csvExportEnabled = true;

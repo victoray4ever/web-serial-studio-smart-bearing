@@ -193,7 +193,7 @@
 .jcom-add-buttons .btn { min-width:68px;justify-content:center;padding:7px 13px }
 .jcom-format-layout { display:grid;grid-template-columns:minmax(440px,1fr) minmax(430px,1.15fr);gap:var(--space-4);align-items:stretch }
 .jcom-field-pane,.jcom-prop-pane { min-width:0;border:1px solid var(--border-subtle);border-radius:var(--radius-md);background:var(--bg-secondary) }
-.jcom-field-list { min-height:460px;max-height:620px;overflow:auto;background:var(--panel-bg) }
+.jcom-field-list { min-height:320px;max-height:min(52vh,520px);overflow:auto;background:var(--panel-bg) }
 .jcom-list-tools { display:flex;gap:4px;padding:5px;border-bottom:1px solid var(--border-subtle);background:rgba(148,163,184,.08);position:sticky;top:0;z-index:1 }
 .jcom-field-row { display:grid;grid-template-columns:48px 136px minmax(0,1fr) 46px;align-items:center;min-height:42px;border-bottom:1px solid var(--border-subtle);font-size:14px;cursor:pointer;transition:background var(--transition-fast) }
 .jcom-field-row:hover { background:rgba(0, 71, 105,.06) }
@@ -207,7 +207,7 @@
 .jcom-field-value.editable { padding:3px 8px }
 .jcom-field-value.editable input { width:100%;min-height:30px;border:1px solid rgba(0, 107, 136,.32);border-radius:var(--radius-sm);background:rgba(0, 107, 136,.08);color:var(--accent-cyan);font-family:var(--font-mono);font-size:14px;padding:4px 8px;outline:none }
 .jcom-field-value.editable input:focus { border-color:var(--accent-blue);box-shadow:0 0 0 2px rgba(0, 71, 105,.16) }
-.jcom-prop-pane { padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-4) }
+.jcom-prop-pane { padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-4);max-height:min(58vh,620px);overflow:auto }
 .jcom-prop-title { text-align:center;font-weight:var(--font-weight-bold);color:var(--text-primary);font-size:16px }
 .jcom-prop-grid { display:grid;grid-template-columns:150px minmax(0,1fr);gap:var(--space-3) var(--space-4);align-items:center }
 .jcom-prop-grid .form-row { display:contents }

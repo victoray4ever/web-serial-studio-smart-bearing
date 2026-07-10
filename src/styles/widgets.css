@@ -5,7 +5,7 @@
 .widget.resizing { border-color:var(--accent-cyan);box-shadow:0 4px 24px rgba(0,107,136,.22);z-index:100 }
 .widget-header { display:flex;align-items:center;justify-content:space-between;padding:var(--space-2) var(--space-3);background:var(--widget-header);border-bottom:1px solid var(--border-subtle);flex-shrink:0;min-height:var(--widget-header-height);cursor:grab;box-shadow:none }
 .widget-header:active { cursor:grabbing }
-.widget-title { font-size:var(--font-size-sm);font-weight:var(--font-weight-bold);color:#000000;display:flex;align-items:center;gap:var(--space-2);letter-spacing:0;user-select:none }
+.widget-title { font-size:var(--font-size-sm);font-weight:var(--font-weight-bold);color:var(--text-primary);display:flex;align-items:center;gap:var(--space-2);letter-spacing:0;user-select:none }
 .widget-title-icon { width:8px;height:8px;border-radius:2px;background:var(--accent-blue);color:transparent;transform:rotate(45deg);flex:0 0 8px }
 .widget-actions { display:flex;align-items:center;gap:2px;position:relative }
 .widget-action-btn { min-width:24px;width:24px;height:24px;display:flex;align-items:center;justify-content:center;border:none;background:transparent;color:var(--text-muted);cursor:pointer;border-radius:var(--radius-sm);font-size:var(--font-size-xs);font-weight:var(--font-weight-semibold);transition:all var(--transition-fast) }
