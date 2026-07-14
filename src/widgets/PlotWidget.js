@@ -35,6 +35,7 @@ export class PlotWidget extends WidgetBase {
     this._rawHistory = [];
     this._chartRetryTimer = null;
     this._devicePixelRatio = Math.min(window.devicePixelRatio || 1, 2.5);
+    this._eventName = config.eventName || 'frame:received';
     this._frameHandler = (frame) => this._onFrame(frame);
     this._middlePanMoveHandler = (event) => this._handleMiddlePanMove(event);
     this._middlePanUpHandler = (event) => this._stopMiddlePan(event);
@@ -256,7 +257,7 @@ export class PlotWidget extends WidgetBase {
   }
 
   _subscribe() {
-    this._unsubscribe = eventBus.on('frame:received', this._frameHandler);
+    this._unsubscribe = eventBus.on(this._eventName, this._frameHandler);
   }
 
   _supportsExport() { return true; }

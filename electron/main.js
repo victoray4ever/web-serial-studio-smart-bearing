@@ -1,7 +1,10 @@
 const { app, BrowserWindow, Menu, shell, session, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const net = require('net');
+const dgram = require('dgram');
 const mqtt = require('mqtt');
+const ModbusRTU = require('modbus-serial');
 const { autoUpdater } = require('electron-updater');
 const { startIntegratedUdpGateway } = require('./udpGateway');
 
@@ -167,6 +170,110 @@ function setupMqttIpc() {
   ipcMain.handle('mqtt-tcp:disconnect', async (_event, sessionId = 'default') => {
     closeMqttSession(String(sessionId || 'default'));
     return { ok: true };
+  });
+}
+
+function setupPlcOutputIpc() {
+  ipcMain.handle('plc:test', async (_event, options = {}) => {
+    if (String(options.type || '') !== 'modbusTcp') throw new Error('Connection test currently supports Modbus TCP only.');
+    const host = String(options.host || '').trim();
+    const port = Number(options.port) || 502;
+    const unitId = Math.max(0, Math.min(255, Number(options.unitId) || 1));
+    const address = Math.max(0, Number(options.address) || 0);
+    const timeout = Math.max(500, Number(options.timeout) || 3000);
+    const operation = options.modbusOperation === 'writeRegister' ? 'writeRegister' : 'writeCoil';
+    if (!host) throw new Error('Modbus TCP connection test requires PLC host.');
+
+    const client = new ModbusRTU();
+    client.setID(unitId);
+    client.setTimeout(timeout);
+    try {
+      await client.connectTCP(host, { port });
+      const response = operation === 'writeRegister'
+        ? await client.readHoldingRegisters(address, 1)
+        : await client.readCoils(address, 1);
+      return {
+        ok: true, type: 'modbusTcp', host, port, unitId, address,
+        operation: operation === 'writeRegister' ? 'readHoldingRegister' : 'readCoil',
+        value: response?.data?.[0]
+      };
+    } finally {
+      try { client.close(() => {}); } catch (_error) { /* connection may not have opened */ }
+    }
+  });
+
+  ipcMain.handle('plc:send', async (_event, options = {}) => {
+    const type = String(options.type || 'none');
+    const payload = ipcPayloadToBuffer(options.payload, options.payloadBase64);
+
+    if (type === 'udp') {
+      if (!payload.length) throw new Error('PLC command payload is empty.');
+      const host = String(options.host || '').trim();
+      const port = Number(options.port);
+      if (!host || !port) throw new Error('UDP output requires host and port.');
+      const socket = dgram.createSocket('udp4');
+      try {
+        await new Promise((resolve, reject) => {
+          socket.send(payload, port, host, (error) => (error ? reject(error) : resolve()));
+        });
+      } finally {
+        socket.close();
+      }
+      return { ok: true, type, bytes: payload.length };
+    }
+
+    if (type === 'tcp') {
+      if (!payload.length) throw new Error('PLC command payload is empty.');
+      const host = String(options.host || '').trim();
+      const port = Number(options.port);
+      if (!host || !port) throw new Error('TCP output requires host and port.');
+      await new Promise((resolve, reject) => {
+        const socket = net.createConnection({ host, port, timeout: 3000 }, () => {
+          socket.write(payload, (error) => {
+            if (error) reject(error);
+            socket.end();
+          });
+        });
+        socket.on('close', resolve);
+        socket.on('timeout', () => {
+          socket.destroy();
+          reject(new Error('TCP output timeout.'));
+        });
+        socket.on('error', reject);
+      });
+      return { ok: true, type, bytes: payload.length };
+    }
+
+    if (type === 'modbusTcp') {
+      const host = String(options.host || '').trim();
+      const port = Number(options.port) || 502;
+      const unitId = Math.max(0, Math.min(255, Number(options.unitId) || 1));
+      const address = Math.max(0, Number(options.address) || 0);
+      const timeout = Math.max(500, Number(options.timeout) || 3000);
+      const operation = options.modbusOperation === 'writeRegister' ? 'writeRegister' : 'writeCoil';
+      const isReset = ['interlock-reset', 'interlock-recovered'].includes(options.context?.reason);
+      const configuredValue = isReset ? options.inactiveValue : options.activeValue;
+      if (!host) throw new Error('Modbus TCP output requires PLC host.');
+
+      const client = new ModbusRTU();
+      client.setID(unitId);
+      client.setTimeout(timeout);
+      try {
+        await client.connectTCP(host, { port });
+        if (operation === 'writeRegister') {
+          const value = Math.max(0, Math.min(0xffff, Number(configuredValue) || 0));
+          await client.writeRegister(address, value);
+          return { ok: true, type, operation, host, port, unitId, address, value };
+        }
+        const value = configuredValue === true || configuredValue === 1 || String(configuredValue).toLowerCase() === 'true' || String(configuredValue) === '1';
+        await client.writeCoil(address, value);
+        return { ok: true, type, operation, host, port, unitId, address, value };
+      } finally {
+        try { client.close(() => {}); } catch (_error) { /* connection may not have opened */ }
+      }
+    }
+
+    throw new Error(`PLC output type "${type}" is not implemented yet.`);
   });
 }
 
@@ -690,6 +797,7 @@ function createWindow() {
 app.whenReady().then(() => {
   setupAutoUpdater();
   setupMqttIpc();
+  setupPlcOutputIpc();
   configureSerialPermissions();
   udpGatewayServer = startIntegratedUdpGateway({ rootDir: path.join(__dirname, '..') });
   Menu.setApplicationMenu(null);

@@ -232,6 +232,22 @@
 .calibration-preset-row { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--space-2);align-items:end;margin-bottom:var(--space-2) }
 .calibration-preset-help { display:grid;gap:var(--space-1);margin-bottom:var(--space-3);font-size:var(--font-size-xs);line-height:1.5;color:var(--text-muted) }
 .calibration-preset-help code { color:var(--accent-cyan);font-family:var(--font-mono) }
+.interlock-editor-card { display:flex;flex-direction:column;gap:var(--space-3);padding:var(--space-3);border:1px solid var(--border-subtle);border-radius:var(--radius-md);background:var(--panel-bg) }
+.interlock-subhead { display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);font-size:var(--font-size-sm);font-weight:var(--font-weight-semibold);color:var(--text-primary) }
+.interlock-rule-list,.interlock-output-list { display:flex;flex-direction:column;gap:var(--space-2) }
+.interlock-rule-row { display:grid;grid-template-columns:1.05fr 1.05fr .8fr .65fr .65fr .65fr .5fr .75fr auto auto;gap:var(--space-2);align-items:center;padding:var(--space-2);border:1px solid var(--border-subtle);border-radius:var(--radius-md);background:var(--panel-elevated) }
+.interlock-dashboard-check { white-space:nowrap;font-size:var(--font-size-xs) }
+.interlock-output-row { display:grid;grid-template-columns:.8fr 1fr .72fr 1fr .55fr 1.45fr auto;gap:var(--space-2);align-items:center;padding:var(--space-2);border:1px solid var(--border-subtle);border-radius:var(--radius-md);background:var(--panel-elevated) }
+.interlock-output-card { display:flex;flex-direction:column;border:1px solid var(--border-subtle);border-radius:var(--radius-md);background:var(--panel-elevated);overflow:hidden }
+.interlock-output-card .interlock-output-row { border:0;border-radius:0;background:transparent }
+.interlock-output-summary { color:var(--text-muted);font-size:var(--font-size-xs);line-height:1.35 }
+.modbus-output-options { display:grid;grid-template-columns:.55fr 1.25fr 1fr 1fr 1fr .8fr;gap:var(--space-2);padding:var(--space-2);border-top:1px solid var(--border-subtle);background:var(--panel-bg) }
+.modbus-output-options label { display:flex;flex-direction:column;gap:5px;min-width:0;color:var(--text-secondary);font-size:var(--font-size-xs);font-weight:var(--font-weight-semibold) }
+.modbus-test-control { grid-column:1 / -1;display:flex;align-items:center;gap:var(--space-3);padding-top:2px;color:var(--text-muted);font-size:var(--font-size-xs) }
+.modbus-test-control .btn { min-width:96px }
+.interlock-rule-row .form-input,.interlock-rule-row .form-select,
+.interlock-output-row .form-input,.interlock-output-row .form-select { min-width:0;font-size:var(--font-size-sm) }
+.interlock-empty { padding:var(--space-3);border:1px dashed var(--border-subtle);border-radius:var(--radius-md);color:var(--text-muted);font-size:var(--font-size-sm);background:var(--panel-elevated) }
 .protocol-import-input { min-height:110px;resize:vertical;font-family:var(--font-mono);line-height:1.45 }
 .protocol-import-actions { display:flex;justify-content:flex-end;gap:var(--space-2);align-items:center }
 @media (max-width:900px) {
@@ -251,5 +267,8 @@
   .professional-config-grid,
   .source-map-row,
   .calibration-row,
-  .calibration-preset-row { grid-template-columns:1fr }
+  .calibration-preset-row,
+  .interlock-rule-row,
+  .interlock-output-row,
+  .modbus-output-options { grid-template-columns:1fr }
 }

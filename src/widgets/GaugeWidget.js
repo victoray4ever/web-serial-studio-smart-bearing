@@ -26,6 +26,7 @@ export class GaugeWidget extends WidgetBase {
     this._rawHistory = [];
     this._resizeObserver = null;
     this._devicePixelRatio = Math.min(window.devicePixelRatio || 1, 2.5);
+    this._eventName = config.eventName || 'frame:received';
   }
 
   _theme(name, fallback = '') {
@@ -72,7 +73,7 @@ export class GaugeWidget extends WidgetBase {
   }
 
   _subscribe() {
-    this._unsubscribe = eventBus.on('frame:received', (frame) => {
+    this._unsubscribe = eventBus.on(this._eventName, (frame) => {
       if (this._destroyed) return;
       const ds = datasetFromFrame(frame, this._datasetRef, this._datasetIndex);
       if (!ds) return;

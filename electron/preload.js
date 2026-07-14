@@ -23,5 +23,9 @@ contextBridge.exposeInMainWorld('memsCmsDesktop', {
     onData: (callback) => subscribe('mqtt-tcp:data', callback),
     onError: (callback) => subscribe('mqtt-tcp:error', callback),
     onClose: (callback) => subscribe('mqtt-tcp:close', callback)
+  },
+  plc: {
+    send: (options) => ipcRenderer.invoke('plc:send', options),
+    test: (options) => ipcRenderer.invoke('plc:test', options)
   }
 });

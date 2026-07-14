@@ -37,6 +37,15 @@ function isEnabled(value) {
   return value !== false;
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
 function buildDefaultLayout(width) {
   const col = Math.floor(width / 3);
   const col2 = col * 2;
@@ -153,6 +162,10 @@ export class Dashboard {
     this._widgets = [];
     this._hasData = false;
     this._emptyEl = null;
+    this._interlockEl = null;
+    this._plcStatusEl = null;
+    this._interlockLogEl = null;
+    this._interlockRecords = [];
     this._wheelHandler = (e) => this._handleWheelScroll(e);
 
     this._frameHandler = () => {
@@ -164,6 +177,9 @@ export class Dashboard {
 
     this._render();
     eventBus.on('frame:received', this._frameHandler);
+    eventBus.on('interlock:status', (status) => this._updateInterlockStatus(status));
+    eventBus.on('interlock:alarm-record', (record) => this._appendInterlockRecord(record));
+    eventBus.on('plc:status', (status) => this._updatePlcStatus(status));
     eventBus.on('state:connectionStateChanged', (state) => {
       if (state === 'Disconnected') {
         this._hasData = false;
@@ -184,6 +200,31 @@ export class Dashboard {
           <button class="btn btn-icon dashboard-header-btn" id="btn-auto-layout" title="${t('dashboard.autoLayout')}">${t('dashboard.autoLayout')}</button>
           <button class="btn btn-icon dashboard-header-btn" id="btn-reset-data" title="${t('dashboard.reset')}">${t('dashboard.reset')}</button>
           <button class="btn btn-icon dashboard-header-btn" id="btn-fullscreen" title="${t('dashboard.fullscreen')}">${t('dashboard.fullscreen')}</button>
+        </div>
+      </div>
+      <div class="plc-connection-status is-disabled" id="plc-connection-status">
+        <div class="plc-connection-main">
+          <span class="plc-connection-dot" aria-hidden="true"></span>
+          <strong class="plc-connection-title">PLC 未检测</strong>
+          <span class="plc-connection-detail">尚未进行 Modbus TCP 通信</span>
+        </div>
+        <time class="plc-connection-time">--</time>
+      </div>
+      <div class="interlock-status is-disabled" id="interlock-status">
+        <div class="interlock-status-main">
+          <span class="interlock-status-dot" aria-hidden="true"></span>
+          <span class="interlock-status-title">联锁未启用</span>
+          <span class="interlock-status-detail">可在项目编辑器中配置 RMS 阈值与 PLC 输出。</span>
+        </div>
+        <button class="btn interlock-reset-btn" id="interlock-reset" type="button">复位</button>
+      </div>
+      <div class="interlock-alarm-log is-disabled" id="interlock-alarm-log">
+        <div class="interlock-alarm-log-head">
+          <strong>报警记录</strong>
+          <button class="btn interlock-log-clear" id="interlock-log-clear" type="button">清空记录</button>
+        </div>
+        <div class="interlock-alarm-log-list" id="interlock-alarm-log-list">
+          <div class="interlock-alarm-log-empty">暂无报警记录</div>
         </div>
       </div>
       <div class="dashboard-empty" id="dashboard-empty">
@@ -213,6 +254,9 @@ export class Dashboard {
       </div>`;
 
     this._emptyEl = this._container.querySelector('#dashboard-empty');
+    this._interlockEl = this._container.querySelector('#interlock-status');
+    this._plcStatusEl = this._container.querySelector('#plc-connection-status');
+    this._interlockLogEl = this._container.querySelector('#interlock-alarm-log');
     this._grid = this._container.querySelector('#dashboard-grid');
     this._canvas = this._container.querySelector('#dashboard-grid-canvas');
     this._container?.addEventListener('wheel', this._wheelHandler, { passive: false });
@@ -222,6 +266,11 @@ export class Dashboard {
     this._container.querySelector('#btn-fullscreen').addEventListener('click', () => {
       if (!document.fullscreenElement) this._container.requestFullscreen?.();
       else document.exitFullscreen?.();
+    });
+    this._container.querySelector('#interlock-reset')?.addEventListener('click', () => eventBus.emit('interlock:reset'));
+    this._container.querySelector('#interlock-log-clear')?.addEventListener('click', () => {
+      this._interlockRecords = [];
+      this._renderInterlockRecords();
     });
     this._container.querySelector('#btn-start-sim-empty')?.addEventListener('click', () => eventBus.emit('ui:startSimulator'));
     this._container.querySelector('#btn-open-project-empty')?.addEventListener('click', () => eventBus.emit('project:openFile'));
@@ -293,6 +342,17 @@ export class Dashboard {
   buildFromProject(project) {
     this._widgets.forEach((w) => w.destroy?.());
     this._widgets = [];
+    const modbusOutput = (project.outputs || []).find((output) => output.type === 'modbusTcp');
+    if (this._plcStatusEl) {
+      this._plcStatusEl.classList.toggle('is-disabled', !modbusOutput);
+      if (modbusOutput) {
+        this._updatePlcStatus({
+          status: 'idle', name: modbusOutput.name || modbusOutput.id,
+          host: modbusOutput.host, port: Number(modbusOutput.port) || 502,
+          unitId: Number(modbusOutput.unitId) || 1
+        });
+      }
+    }
 
     const groups = project.groups || [];
     const datasets = [];
@@ -437,6 +497,36 @@ export class Dashboard {
     };
 
     const gaugeWidth = Math.max(260, Math.floor((width - gap * 2) / 3));
+    const interlockRules = (project.interlock?.enabled ? project.interlock.rules : [])
+      .filter((rule) => rule.showOnDashboard !== false);
+    interlockRules.forEach((rule, index) => {
+      const widgetType = ['Plot', 'Gauge', 'Bar'].includes(rule.displayWidget) ? rule.displayWidget : 'Plot';
+      const threshold = Number(rule.threshold) || 0;
+      const min = Number.isFinite(Number(rule.displayMin)) ? Number(rule.displayMin) : 0;
+      const max = Number.isFinite(Number(rule.displayMax)) && Number(rule.displayMax) > min
+        ? Number(rule.displayMax)
+        : Math.max(threshold * 1.5, 1);
+      const title = `${rule.name || `RMS ${index + 1}`} - 实时值`;
+      if (widgetType === 'Gauge') {
+        addFlowWidget(({ x, y: widgetY, w, h }) => new GaugeWidget({
+          title, eventName: 'interlock:metrics', datasetIndex: index, min, max,
+          units: rule.unit || '', colorIdx: index, x, y: widgetY, w, h
+        }), gaugeWidth, 260);
+      } else if (widgetType === 'Bar') {
+        addFlowWidget(({ x, y: widgetY, w, h }) => new BarWidget({
+          title, eventName: 'interlock:metrics',
+          datasets: [{ index, title: rule.name || `RMS ${index + 1}`, min, max, units: rule.unit || '' }],
+          x, y: widgetY, w, h
+        }), Math.max(320, Math.floor((width - gap) / 2)), 220);
+      } else {
+        addFlowWidget(({ x, y: widgetY, w, h }) => new PlotWidget({
+          title, eventName: 'interlock:metrics', datasetIndices: [index],
+          datasetLabels: [rule.name || `RMS ${index + 1}`], datasetUnits: [rule.unit || ''],
+          colorOffset: index, x, y: widgetY, w, h
+        }), Math.max(360, Math.floor((width - gap) / 2)), 260);
+      }
+    });
+
     gaugeDatasets.forEach((ds, i) => {
       addFlowWidget(({ x, y: widgetY, w, h }) => new GaugeWidget({
         title: ds.title,
@@ -562,6 +652,79 @@ export class Dashboard {
 
   _resetAll() {
     this._widgets.forEach((w) => w.reset?.());
+    eventBus.emit('interlock:reset');
+  }
+
+  _updatePlcStatus(status = {}) {
+    if (!this._plcStatusEl) return;
+    const state = status.status || 'idle';
+    const labels = {
+      idle: 'PLC 未检测', testing: 'PLC 检测中', connecting: 'PLC 连接中',
+      online: 'PLC 通信正常', error: 'PLC 通信异常'
+    };
+    const endpoint = status.host ? `${status.host}:${status.port || 502}` : 'PLC 地址未设置';
+    const operation = status.operation
+      ? `；${status.operation}${status.address !== undefined ? ` 地址 ${status.address}` : ''}${status.value !== undefined ? ` ← ${String(status.value)}` : ''}`
+      : '';
+    const detail = status.message || `${endpoint}；Unit ID ${status.unitId || 1}${operation}`;
+    this._plcStatusEl.className = `plc-connection-status is-${state}`;
+    this._plcStatusEl.querySelector('.plc-connection-title').textContent = labels[state] || 'PLC 状态';
+    this._plcStatusEl.querySelector('.plc-connection-detail').textContent = detail;
+    this._plcStatusEl.querySelector('.plc-connection-time').textContent = status.timestamp
+      ? `最近通信：${new Date(status.timestamp).toLocaleTimeString()}`
+      : endpoint;
+  }
+
+  _updateInterlockStatus(status = {}) {
+    if (!this._interlockEl) return;
+    const enabled = !!status.enabled;
+    const alarm = enabled && status.state === 'alarm';
+    const rules = Array.isArray(status.rules) ? status.rules : [];
+    const detail = rules.length
+      ? rules.slice(0, 3).map((rule) => {
+        const value = Number(rule.value);
+        const valueText = Number.isFinite(value) ? value.toFixed(4) : '--';
+        const threshold = Number(rule.threshold);
+        const thresholdText = Number.isFinite(threshold) ? threshold.toFixed(4) : '--';
+        return `${rule.name}: ${valueText}/${thresholdText}${rule.unit || ''}`;
+      }).join(' | ')
+      : (enabled ? '等待联锁数据...' : '可在项目编辑器中配置 RMS 阈值与 PLC 输出。');
+
+    this._interlockEl.classList.toggle('is-disabled', !enabled);
+    this._interlockLogEl?.classList.toggle('is-disabled', !enabled);
+    this._interlockEl.classList.toggle('is-normal', enabled && !alarm);
+    this._interlockEl.classList.toggle('is-alarm', alarm);
+    this._interlockEl.querySelector('.interlock-status-title').textContent = !enabled
+      ? '联锁未启用'
+      : (alarm ? '联锁报警' : '联锁正常');
+    this._interlockEl.querySelector('.interlock-status-detail').textContent = detail;
+  }
+
+  _appendInterlockRecord(record = {}) {
+    this._interlockRecords.unshift(record);
+    if (this._interlockRecords.length > 100) this._interlockRecords.length = 100;
+    this._renderInterlockRecords();
+  }
+
+  _renderInterlockRecords() {
+    const list = this._interlockLogEl?.querySelector('#interlock-alarm-log-list');
+    if (!list) return;
+    if (!this._interlockRecords.length) {
+      list.innerHTML = '<div class="interlock-alarm-log-empty">暂无报警记录</div>';
+      return;
+    }
+    const labels = { alarm: '报警触发', recovered: '自动恢复', reset: '手动复位' };
+    list.innerHTML = this._interlockRecords.map((record) => {
+      const ruleText = (record.rules || []).map((rule) => {
+        const value = Number(rule.value);
+        return `${rule.name || rule.sourceField}: ${Number.isFinite(value) ? value.toFixed(6) : '--'} ${rule.unit || ''}`;
+      }).join('；') || '--';
+      return `<div class="interlock-alarm-log-row is-${escapeHtml(record.type || 'alarm')}">
+        <time>${new Date(record.timestamp || Date.now()).toLocaleString()}</time>
+        <strong>${escapeHtml(labels[record.type] || '状态变化')}</strong>
+        <span title="${escapeHtml(ruleText)}">${escapeHtml(ruleText)}</span>
+      </div>`;
+    }).join('');
   }
 
   _handleWheelScroll(e) {

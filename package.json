@@ -71,6 +71,7 @@
   },
   "dependencies": {
     "electron-updater": "^6.8.9",
+    "modbus-serial": "^8.0.25",
     "mqtt": "^5.15.2",
     "ws": "^8.21.0"
   }

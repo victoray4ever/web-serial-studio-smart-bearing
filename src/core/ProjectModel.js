@@ -10,6 +10,16 @@ export const defaultProject = () => ({
   frameEnd: '\\n',
   frameDetection: 'EndDelimiterOnly',
   protocolFields: [],
+  interlock: {
+    enabled: false,
+    mode: 'any',
+    windowSize: 1024,
+    confirmWindows: 3,
+    resetMode: 'manual',
+    rules: [],
+    onAlarm: { outputId: '' }
+  },
+  outputs: [],
   frameParser: "function parse(frame) {\n  return frame.split(',').map(Number);\n}\n",
   groups: [
     {
@@ -19,6 +29,58 @@ export const defaultProject = () => ({
     }
   ]
 });
+
+function normalizeInterlock(input) {
+  const data = input && typeof input === 'object' ? input : {};
+  const rules = Array.isArray(data.rules) ? data.rules : [];
+  return {
+    enabled: !!data.enabled,
+    mode: data.mode === 'all' ? 'all' : 'any',
+    windowSize: Math.max(1, Number(data.windowSize) || 1024),
+    confirmWindows: Math.max(1, Number(data.confirmWindows) || 3),
+    resetMode: data.resetMode === 'auto' ? 'auto' : 'manual',
+    rules: rules.map((rule, index) => ({
+      id: String(rule?.id || `rule_${index + 1}`),
+      name: String(rule?.name || rule?.title || `Rule ${index + 1}`),
+      sourceField: String(rule?.sourceField || ''),
+      sourceId: String(rule?.sourceId || ''),
+      index: Number.isInteger(Number(rule?.index)) ? Number(rule.index) : undefined,
+      method: ['rms', 'max', 'min', 'avg'].includes(rule?.method) ? rule.method : 'rms',
+      threshold: Number(rule?.threshold) || 0,
+      windowSize: Math.max(0, Number(rule?.windowSize) || 0),
+      confirmWindows: Math.max(0, Number(rule?.confirmWindows) || 0),
+      unit: String(rule?.unit || rule?.units || ''),
+      showOnDashboard: rule?.showOnDashboard !== false,
+      displayWidget: ['Plot', 'Gauge', 'Bar'].includes(rule?.displayWidget) ? rule.displayWidget : 'Plot',
+      displayMin: Number.isFinite(Number(rule?.displayMin)) ? Number(rule.displayMin) : 0,
+      displayMax: Number.isFinite(Number(rule?.displayMax)) ? Number(rule.displayMax) : Math.max(Number(rule?.threshold) * 1.5 || 1, 1)
+    })),
+    onAlarm: {
+      outputId: String(data.onAlarm?.outputId || data.outputId || '')
+    }
+  };
+}
+
+function normalizeOutputs(input) {
+  const outputs = Array.isArray(input) ? input : [];
+  return outputs.map((output, index) => ({
+    id: String(output?.id || `output_${index + 1}`),
+    name: String(output?.name || output?.title || `Output ${index + 1}`),
+    type: ['none', 'udp', 'tcp', 'serial', 'modbusTcp', 'modbusRtu'].includes(output?.type) ? output.type : 'none',
+    host: String(output?.host || ''),
+    port: Number(output?.port) || 0,
+    serialPort: String(output?.serialPort || output?.portName || ''),
+    baudRate: Number(output?.baudRate) || 9600,
+    commandHex: String(output?.commandHex || ''),
+    target: String(output?.target || ''),
+    address: Number(output?.address) || 0,
+    activeValue: output?.activeValue ?? true,
+    inactiveValue: output?.inactiveValue ?? false,
+    unitId: Math.max(0, Math.min(255, Number(output?.unitId) || 1)),
+    modbusOperation: output?.modbusOperation === 'writeRegister' ? 'writeRegister' : 'writeCoil',
+    timeout: Math.max(500, Number(output?.timeout) || 3000)
+  }));
+}
 
 export class ProjectModel {
   constructor() {
@@ -130,6 +192,8 @@ export class ProjectModel {
       frameParserCode,
       frameParserLanguage: data.frameParserLanguage ?? sources[0]?.frameParserLanguage ?? 0,
       protocolValidation: data.protocolValidation && typeof data.protocolValidation === 'object' ? data.protocolValidation : {},
+      interlock: normalizeInterlock(data.interlock),
+      outputs: normalizeOutputs(data.outputs),
       sourceIdMap: Array.isArray(data.sourceIdMap) ? data.sourceIdMap : [],
       calibrationParameters: Array.isArray(data.calibrationParameters) ? data.calibrationParameters : [],
       sources,

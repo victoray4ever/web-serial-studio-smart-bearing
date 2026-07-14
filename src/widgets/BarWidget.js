@@ -13,6 +13,7 @@ export class BarWidget extends WidgetBase {
     this._values = this._datasets.map(() => 0);
     this._colorOffset = config.colorOffset || 0;
     this._items = [];
+    this._eventName = config.eventName || 'frame:received';
   }
 
   _render(body) {
@@ -38,7 +39,7 @@ export class BarWidget extends WidgetBase {
   }
 
   _subscribe() {
-    this._unsubscribe = eventBus.on('frame:received', (frame) => {
+    this._unsubscribe = eventBus.on(this._eventName, (frame) => {
       if (this._destroyed) return;
       this._datasets.forEach((ds, i) => {
         const fds = datasetFromFrame(frame, ds, i);

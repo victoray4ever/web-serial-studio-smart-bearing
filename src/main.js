@@ -11,6 +11,7 @@ import { Sidebar } from './ui/Sidebar.js?v=interface-sync-20260709-1';
 import { Dashboard } from './ui/Dashboard.js?v=solid-mems-theme-20260708-1';
 import { Console } from './ui/Console.js?v=ui-fix-20260424-1';
 import { ProjectModel } from './core/ProjectModel.js?v=protocol-editor-v4-20260706-1';
+import { InterlockManager } from './core/InterlockManager.js?v=interlock-20260710-1';
 import { PreferencesDialog } from './ui/PreferencesDialog.js?v=auto-update-20260709-1';
 import { ProjectEditorDialog } from './ui/ProjectEditorDialog.js?v=chart-gauge-editor-i18n-20260709-1';
 import { GatewayConfigDialog } from './ui/GatewayConfigDialog.js?v=multi-udp-gateway-routing-20260619-2';
@@ -21,6 +22,7 @@ class App {
     this._conn = new ConnectionManager();
     this._sim = new DataSimulator();
     this._project = new ProjectModel();
+    this._interlock = new InterlockManager();
     this._toolbar = null;
     this._sidebar = null;
     this._dashboard = null;
@@ -74,6 +76,7 @@ class App {
 
     const project = this._project.project;
     this._dashboard.buildFromProject(project);
+    this._interlock.configure(project);
 
     appState.project = project;
     appState.projectFileName = project.title || '';

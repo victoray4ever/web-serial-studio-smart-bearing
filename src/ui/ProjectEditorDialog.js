@@ -1,6 +1,7 @@
 import { eventBus } from '../core/EventBus.js';
 import { appState } from '../core/AppState.js';
 import { defaultProject } from '../core/ProjectModel.js';
+import { outputManager } from '../core/OutputManager.js';
 import { t } from '../core/i18n.js?v=csv-autosave-20260424-1';
 
 function cloneProject(project) {
@@ -936,6 +937,56 @@ export class ProjectEditorDialog {
       value: Number(item?.value) || 0,
       unit: String(item?.unit || item?.units || '')
     }));
+
+    this._ensureInterlockConfig(project);
+  }
+
+  _ensureInterlockConfig(project) {
+    if (!project.interlock || typeof project.interlock !== 'object') project.interlock = {};
+    const interlock = project.interlock;
+    interlock.enabled = !!interlock.enabled;
+    interlock.mode = interlock.mode === 'all' ? 'all' : 'any';
+    interlock.windowSize = Math.max(1, Number(interlock.windowSize) || 1024);
+    interlock.confirmWindows = Math.max(1, Number(interlock.confirmWindows) || 3);
+    interlock.resetMode = interlock.resetMode === 'auto' ? 'auto' : 'manual';
+    if (!interlock.onAlarm || typeof interlock.onAlarm !== 'object') interlock.onAlarm = {};
+    interlock.onAlarm.outputId = String(interlock.onAlarm.outputId || interlock.outputId || '');
+    if (!Array.isArray(interlock.rules)) interlock.rules = [];
+    interlock.rules = interlock.rules.map((rule, index) => ({
+      id: String(rule?.id || `rule_${index + 1}`),
+      name: String(rule?.name || rule?.title || `Rule ${index + 1}`),
+      sourceField: String(rule?.sourceField || ''),
+      sourceId: String(rule?.sourceId || ''),
+      index: Number.isInteger(Number(rule?.index)) ? Number(rule.index) : undefined,
+      method: ['rms', 'max', 'min', 'avg'].includes(rule?.method) ? rule.method : 'rms',
+      threshold: Number(rule?.threshold) || 0,
+      windowSize: Math.max(0, Number(rule?.windowSize) || 0),
+      confirmWindows: Math.max(0, Number(rule?.confirmWindows) || 0),
+      unit: String(rule?.unit || rule?.units || ''),
+      showOnDashboard: rule?.showOnDashboard !== false,
+      displayWidget: ['Plot', 'Gauge', 'Bar'].includes(rule?.displayWidget) ? rule.displayWidget : 'Plot',
+      displayMin: Number.isFinite(Number(rule?.displayMin)) ? Number(rule.displayMin) : 0,
+      displayMax: Number.isFinite(Number(rule?.displayMax)) ? Number(rule.displayMax) : Math.max(Number(rule?.threshold) * 1.5 || 1, 1)
+    }));
+
+    if (!Array.isArray(project.outputs)) project.outputs = [];
+    project.outputs = project.outputs.map((output, index) => ({
+      id: String(output?.id || `output_${index + 1}`),
+      name: String(output?.name || output?.title || `Output ${index + 1}`),
+      type: ['none', 'udp', 'tcp', 'serial', 'modbusTcp', 'modbusRtu'].includes(output?.type) ? output.type : 'none',
+      host: String(output?.host || ''),
+      port: Number(output?.port) || 0,
+      serialPort: String(output?.serialPort || output?.portName || ''),
+      baudRate: Number(output?.baudRate) || 9600,
+      commandHex: String(output?.commandHex || ''),
+      target: String(output?.target || ''),
+      address: Number(output?.address) || 0,
+      activeValue: output?.activeValue ?? true,
+      inactiveValue: output?.inactiveValue ?? false,
+      unitId: Math.max(0, Math.min(255, Number(output?.unitId) || 1)),
+      modbusOperation: output?.modbusOperation === 'writeRegister' ? 'writeRegister' : 'writeCoil',
+      timeout: Math.max(500, Number(output?.timeout) || 3000)
+    }));
   }
 
   _syncProtocolSchema(project) {
@@ -1262,6 +1313,7 @@ export class ProjectEditorDialog {
     });
 
     this._bindProfessionalConfigEvents();
+    this._bindInterlockEvents();
     this._bindJcomFormatEvents();
 
     this._el?.querySelector('#protocol-field-add')?.addEventListener('click', () => {
@@ -1452,6 +1504,130 @@ export class ProjectEditorDialog {
         if (textarea) textarea.value = String(readerEvent.target?.result || '');
       };
       reader.readAsText(file);
+    });
+  }
+
+  _bindInterlockEvents() {
+    this._ensureInterlockConfig(this._draft);
+    const interlock = this._draft.interlock;
+
+    this._el?.querySelectorAll('[data-interlock-field]').forEach((node) => {
+      const field = node.dataset.interlockField;
+      node.addEventListener(node.type === 'checkbox' || node.tagName === 'SELECT' ? 'change' : 'input', () => {
+        if (!field) return;
+        if (field === 'enabled') interlock.enabled = !!node.checked;
+        else if (['windowSize', 'confirmWindows'].includes(field)) interlock[field] = Math.max(1, Number(node.value) || 1);
+        else interlock[field] = node.value;
+      });
+    });
+
+    this._el?.querySelector('[data-interlock-output-id]')?.addEventListener('change', (event) => {
+      interlock.onAlarm.outputId = event.target.value;
+    });
+
+    this._el?.querySelector('#interlock-rule-add')?.addEventListener('click', () => {
+      const index = interlock.rules.length + 1;
+      interlock.rules.push({
+        id: `rule_${index}`,
+        name: `RMS ${index}`,
+        sourceField: '',
+        sourceId: '',
+        method: 'rms',
+        threshold: 0,
+        windowSize: 0,
+        confirmWindows: 0,
+        unit: '',
+        showOnDashboard: true,
+        displayWidget: 'Plot',
+        displayMin: 0,
+        displayMax: 1
+      });
+      this._refreshBody();
+    });
+
+    this._el?.querySelectorAll('[data-interlock-rule-field]').forEach((node) => {
+      const index = Number(node.dataset.index);
+      const field = node.dataset.interlockRuleField;
+      node.addEventListener(node.tagName === 'SELECT' ? 'change' : 'input', () => {
+        const rule = interlock.rules?.[index];
+        if (!rule || !field) return;
+        if (field === 'showOnDashboard') rule[field] = !!node.checked;
+        else if (['threshold', 'windowSize', 'confirmWindows', 'displayMin', 'displayMax'].includes(field)) rule[field] = Number(node.value) || 0;
+        else rule[field] = node.value;
+      });
+    });
+
+    this._el?.querySelectorAll('[data-interlock-rule-remove]').forEach((node) => {
+      node.addEventListener('click', () => {
+        const index = Number(node.dataset.interlockRuleRemove);
+        if (!Number.isInteger(index)) return;
+        interlock.rules.splice(index, 1);
+        this._refreshBody();
+      });
+    });
+
+    this._el?.querySelector('#interlock-output-add')?.addEventListener('click', () => {
+      const index = this._draft.outputs.length + 1;
+      this._draft.outputs.push({
+        id: `plc_output_${index}`,
+        name: `PLC Output ${index}`,
+        type: 'udp',
+        host: '',
+        port: 0,
+        commandHex: '',
+        unitId: 1,
+        modbusOperation: 'writeCoil',
+        address: 0,
+        activeValue: true,
+        inactiveValue: false,
+        timeout: 3000
+      });
+      this._refreshBody();
+    });
+
+    this._el?.querySelectorAll('[data-output-field]').forEach((node) => {
+      const index = Number(node.dataset.index);
+      const field = node.dataset.outputField;
+      node.addEventListener(node.tagName === 'SELECT' ? 'change' : 'input', () => {
+        const output = this._draft.outputs?.[index];
+        if (!output || !field) return;
+        if (['port', 'baudRate', 'address', 'unitId', 'timeout'].includes(field)) output[field] = Number(node.value) || 0;
+        else output[field] = node.value;
+        if (field === 'type') {
+          if (output.type === 'modbusTcp' && !Number(output.port)) output.port = 502;
+          this._refreshBody();
+        }
+      });
+    });
+
+    this._el?.querySelectorAll('[data-output-remove]').forEach((node) => {
+      node.addEventListener('click', () => {
+        const index = Number(node.dataset.outputRemove);
+        if (!Number.isInteger(index)) return;
+        const removed = this._draft.outputs[index]?.id;
+        this._draft.outputs.splice(index, 1);
+        if (interlock.onAlarm.outputId === removed) interlock.onAlarm.outputId = '';
+        this._refreshBody();
+      });
+    });
+
+    this._el?.querySelectorAll('[data-output-test]').forEach((node) => {
+      node.addEventListener('click', async () => {
+        const index = Number(node.dataset.outputTest);
+        const output = this._draft.outputs?.[index];
+        const status = this._el?.querySelector(`[data-output-test-status="${index}"]`);
+        if (!output) return;
+        node.disabled = true;
+        if (status) status.textContent = '正在读取 PLC...';
+        try {
+          const result = await outputManager.test(output);
+          if (status) status.textContent = `连接正常，地址 ${result.address} 当前值：${String(result.value)}`;
+        } catch (error) {
+          if (status) status.textContent = `连接失败：${error.message || error}`;
+        } finally {
+          node.disabled = false;
+        }
+      });
     });
   }
 
@@ -3188,6 +3364,7 @@ export class ProjectEditorDialog {
           </div>
         </div>
         ${this._renderJcomFormatEditor()}
+        ${this._renderInterlockEditor()}
         ${this._renderByteLayoutView()}
         ${this._renderSampleTester()}`;
     }
@@ -3286,6 +3463,158 @@ export class ProjectEditorDialog {
         <div class="form-label">${label}</div>
         <select class="form-select" data-field="${field}" data-kind="string">
           ${options.map((option) => `<option value="${this._escapeAttr(option)}" ${option === value ? 'selected' : ''}>${this._escape(this._optionLabel(option))}</option>`).join('')}
+        </select>
+      </div>`;
+  }
+
+  _renderInterlockEditor() {
+    this._ensureInterlockConfig(this._draft);
+    const zh = appState.locale === 'zh-CN';
+    const interlock = this._draft.interlock;
+    const outputs = this._draft.outputs || [];
+    const fieldOptions = this._interlockSourceFieldOptions();
+    const methodLabels = {
+      rms: zh ? 'RMS 有效值' : 'RMS',
+      max: zh ? '最大值' : 'Max',
+      min: zh ? '最小值' : 'Min',
+      avg: zh ? '平均值' : 'Average'
+    };
+    return `
+      <div class="editor-form-section">
+        <div class="editor-form-section-title">${zh ? '联锁设置' : 'Interlock Settings'}</div>
+        <div class="interlock-editor-card">
+          <div class="editor-form-grid">
+            <label class="checkbox-wrap" style="margin:0">
+              <input type="checkbox" data-interlock-field="enabled" ${interlock.enabled ? 'checked' : ''}>
+              <span>${zh ? '启用联锁' : 'Enable Interlock'}</span>
+            </label>
+            ${this._renderInlineSelect(zh ? '触发模式' : 'Trigger Mode', 'mode', interlock.mode, [['any', zh ? '任一路超限' : 'Any Rule'], ['all', zh ? '全部超限' : 'All Rules']], 'data-interlock-field')}
+            ${this._renderInlineNumber(zh ? '默认窗口点数' : 'Default Window Size', 'windowSize', interlock.windowSize, 'data-interlock-field')}
+            ${this._renderInlineNumber(zh ? '默认确认次数' : 'Default Confirm Windows', 'confirmWindows', interlock.confirmWindows, 'data-interlock-field')}
+            ${this._renderInlineSelect(zh ? '复位方式' : 'Reset Mode', 'resetMode', interlock.resetMode, [['manual', zh ? '手动复位' : 'Manual'], ['auto', zh ? '自动恢复' : 'Auto']], 'data-interlock-field')}
+            <div class="form-row">
+              <div class="form-label">${zh ? '报警输出' : 'Alarm Output'}</div>
+              <select class="form-select" data-interlock-output-id="true">
+                <option value="">${zh ? '不发送' : 'Do not send'}</option>
+                ${outputs.map((output) => `<option value="${this._escapeAttr(output.id)}" ${output.id === interlock.onAlarm.outputId ? 'selected' : ''}>${this._escape(output.name || output.id)}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          <div class="interlock-subhead">
+            <span>${zh ? '阈值规则' : 'Threshold Rules'}</span>
+            <button class="btn" type="button" id="interlock-rule-add">${zh ? '添加规则' : 'Add Rule'}</button>
+          </div>
+          <div class="interlock-rule-list">
+            ${interlock.rules.length ? interlock.rules.map((rule, index) => this._renderInterlockRule(rule, index, fieldOptions, methodLabels, zh)).join('') : `<div class="interlock-empty">${zh ? '尚未配置规则。添加 4 路振动 RMS 规则后即可报警判断。' : 'No rules configured.'}</div>`}
+          </div>
+        </div>
+      </div>
+      <div class="editor-form-section">
+        <div class="editor-form-section-title">${zh ? '输出设置' : 'Output Settings'}</div>
+        <div class="interlock-editor-card">
+          <div class="interlock-subhead">
+            <span>${zh ? 'PLC 输出通道' : 'PLC Outputs'}</span>
+            <button class="btn" type="button" id="interlock-output-add">${zh ? '添加输出' : 'Add Output'}</button>
+          </div>
+          <div class="interlock-output-list">
+            ${outputs.length ? outputs.map((output, index) => this._renderOutputRow(output, index, zh)).join('') : `<div class="interlock-empty">${zh ? '尚未配置输出。可以先只显示报警，后续再添加 UDP/TCP/Modbus。' : 'No outputs configured.'}</div>`}
+          </div>
+        </div>
+      </div>`;
+  }
+
+  _renderInterlockRule(rule, index, fieldOptions, methodLabels, zh) {
+    return `
+      <div class="interlock-rule-row">
+        <input class="form-input" data-interlock-rule-field="name" data-index="${index}" value="${this._escapeAttr(rule.name || '')}" placeholder="${zh ? '规则名称' : 'Rule name'}">
+        <select class="form-select" data-interlock-rule-field="sourceField" data-index="${index}">
+          <option value="">${zh ? '选择数据源字段' : 'Source field'}</option>
+          ${fieldOptions.map((field) => `<option value="${this._escapeAttr(field)}" ${field === rule.sourceField ? 'selected' : ''}>${this._escape(field)}</option>`).join('')}
+        </select>
+        <select class="form-select" data-interlock-rule-field="method" data-index="${index}">
+          ${Object.entries(methodLabels).map(([value, label]) => `<option value="${value}" ${value === rule.method ? 'selected' : ''}>${this._escape(label)}</option>`).join('')}
+        </select>
+        <input class="form-input" type="number" step="any" data-interlock-rule-field="threshold" data-index="${index}" value="${Number(rule.threshold) || 0}" placeholder="${zh ? '阈值' : 'Threshold'}">
+        <input class="form-input" type="number" data-interlock-rule-field="windowSize" data-index="${index}" value="${Number(rule.windowSize) || 0}" placeholder="${zh ? '窗口(0=默认)' : 'Window'}">
+        <input class="form-input" type="number" data-interlock-rule-field="confirmWindows" data-index="${index}" value="${Number(rule.confirmWindows) || 0}" placeholder="${zh ? '确认(0=默认)' : 'Confirm'}">
+        <input class="form-input" data-interlock-rule-field="unit" data-index="${index}" value="${this._escapeAttr(rule.unit || '')}" placeholder="${zh ? '单位' : 'Unit'}">
+        <select class="form-select" data-interlock-rule-field="displayWidget" data-index="${index}" title="${zh ? '仪表盘显示方式' : 'Dashboard widget'}">
+          ${[['Plot', zh ? '折线图' : 'Plot'], ['Gauge', zh ? '仪表' : 'Gauge'], ['Bar', zh ? '柱状条' : 'Bar']].map(([value, label]) => `<option value="${value}" ${rule.displayWidget === value ? 'selected' : ''}>${label}</option>`).join('')}
+        </select>
+        <label class="checkbox-wrap interlock-dashboard-check" title="${zh ? '在仪表盘显示实时计算值' : 'Show live metric on dashboard'}">
+          <input type="checkbox" data-interlock-rule-field="showOnDashboard" data-index="${index}" ${rule.showOnDashboard !== false ? 'checked' : ''}>
+          <span>${zh ? '显示' : 'Show'}</span>
+        </label>
+        <button class="btn" type="button" data-interlock-rule-remove="${index}">-</button>
+      </div>`;
+  }
+
+  _renderOutputRow(output, index, zh) {
+    const isModbusTcp = output.type === 'modbusTcp';
+    return `
+      <div class="interlock-output-card">
+        <div class="interlock-output-row">
+          <input class="form-input" data-output-field="id" data-index="${index}" value="${this._escapeAttr(output.id || '')}" placeholder="ID">
+          <input class="form-input" data-output-field="name" data-index="${index}" value="${this._escapeAttr(output.name || '')}" placeholder="${zh ? '输出名称' : 'Name'}">
+          <select class="form-select" data-output-field="type" data-index="${index}">
+            ${['none', 'udp', 'tcp', 'modbusTcp'].map((type) => `<option value="${type}" ${type === output.type ? 'selected' : ''}>${type === 'modbusTcp' ? 'Modbus TCP' : type}</option>`).join('')}
+          </select>
+          <input class="form-input" data-output-field="host" data-index="${index}" value="${this._escapeAttr(output.host || '')}" placeholder="${zh ? 'PLC IP / 主机' : 'PLC host'}">
+          <input class="form-input" type="number" data-output-field="port" data-index="${index}" value="${Number(output.port) || (isModbusTcp ? 502 : 0)}" placeholder="${zh ? '端口' : 'Port'}">
+          ${isModbusTcp
+            ? `<span class="interlock-output-summary">${zh ? '报警与复位值由 Modbus 参数发送' : 'Alarm/reset values use Modbus parameters'}</span>`
+            : `<input class="form-input" data-output-field="commandHex" data-index="${index}" value="${this._escapeAttr(output.commandHex || '')}" placeholder="${zh ? '命令 HEX，例如 AA 55 01 01' : 'Command HEX'}">`}
+          <button class="btn" type="button" data-output-remove="${index}">-</button>
+        </div>
+        ${isModbusTcp ? `
+          <div class="modbus-output-options">
+            <label><span>Unit ID</span><input class="form-input" type="number" min="0" max="255" data-output-field="unitId" data-index="${index}" value="${Number(output.unitId) || 1}"></label>
+            <label><span>${zh ? '写入类型' : 'Operation'}</span><select class="form-select" data-output-field="modbusOperation" data-index="${index}">
+              <option value="writeCoil" ${output.modbusOperation !== 'writeRegister' ? 'selected' : ''}>${zh ? '写单线圈 (FC05)' : 'Write Coil (FC05)'}</option>
+              <option value="writeRegister" ${output.modbusOperation === 'writeRegister' ? 'selected' : ''}>${zh ? '写保持寄存器 (FC06)' : 'Write Register (FC06)'}</option>
+            </select></label>
+            <label><span>${zh ? '地址（从0开始）' : 'Address (zero-based)'}</span><input class="form-input" type="number" min="0" data-output-field="address" data-index="${index}" value="${Number(output.address) || 0}"></label>
+            <label><span>${zh ? '报警写入值' : 'Alarm value'}</span><input class="form-input" data-output-field="activeValue" data-index="${index}" value="${this._escapeAttr(String(output.activeValue ?? true))}"></label>
+            <label><span>${zh ? '复位写入值' : 'Reset value'}</span><input class="form-input" data-output-field="inactiveValue" data-index="${index}" value="${this._escapeAttr(String(output.inactiveValue ?? false))}"></label>
+            <label><span>${zh ? '超时 (ms)' : 'Timeout (ms)'}</span><input class="form-input" type="number" min="500" data-output-field="timeout" data-index="${index}" value="${Math.max(500, Number(output.timeout) || 3000)}"></label>
+            <div class="modbus-test-control">
+              <button class="btn btn-primary" type="button" data-output-test="${index}">${zh ? '测试连接' : 'Test connection'}</button>
+              <span data-output-test-status="${index}">${zh ? '执行只读测试，不写入控制值' : 'Read-only test; no control value is written'}</span>
+            </div>
+          </div>` : ''}
+      </div>`;
+  }
+
+  _interlockSourceFieldOptions() {
+    const fields = new Set();
+    (this._draft.protocolFields || []).forEach((field) => {
+      if (field?.name && !['frameHeader', 'frameTail', 'checksum'].includes(field.kind)) fields.add(field.name);
+      if (field?.channels > 1) {
+        for (let i = 1; i <= Number(field.channels); i += 1) fields.add(`${field.name}_ch${i}`);
+      }
+    });
+    (this._draft.groups || []).forEach((group) => {
+      (group.datasets || []).forEach((dataset) => {
+        if (dataset.sourceField) fields.add(dataset.sourceField);
+      });
+    });
+    return Array.from(fields);
+  }
+
+  _renderInlineNumber(label, field, value, attrName) {
+    return `
+      <div class="form-row">
+        <div class="form-label">${label}</div>
+        <input class="form-input" type="number" ${attrName}="${field}" value="${Number(value) || 0}">
+      </div>`;
+  }
+
+  _renderInlineSelect(label, field, value, options, attrName) {
+    return `
+      <div class="form-row">
+        <div class="form-label">${label}</div>
+        <select class="form-select" ${attrName}="${field}">
+          ${options.map(([optionValue, optionLabel]) => `<option value="${this._escapeAttr(optionValue)}" ${optionValue === value ? 'selected' : ''}>${this._escape(optionLabel)}</option>`).join('')}
         </select>
       </div>`;
   }
