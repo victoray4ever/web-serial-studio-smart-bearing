@@ -3,6 +3,7 @@
  */
 import { eventBus } from './EventBus.js';
 import { appState, OperationMode } from './AppState.js';
+import { rawFrameStore, rawValueToBytes } from './RawFrameStore.js';
 
 export class FrameParser {
   constructor(context = {}) {
@@ -237,17 +238,16 @@ export class FrameParser {
     return [];
   }
 
-  _bytesToHexString(bytes = []) {
-    return bytes.map((byte) => Number(byte).toString(16).padStart(2, '0').toUpperCase()).join(' ');
-  }
-
   _projectRawBySourceField(raw) {
     const bytes = this._rawContentToBytes(raw);
     const fields = this._project()?.protocolFields;
     const map = new Map();
     if (!bytes.length || !Array.isArray(fields)) return map;
 
-    const sliceHex = (offset, length) => this._bytesToHexString(bytes.slice(Math.max(0, offset), Math.max(0, offset) + Math.max(0, length)));
+    const byteRange = (offset, length) => ({
+      offset: Math.max(0, offset),
+      length: Math.max(0, length)
+    });
 
     fields.forEach((field) => {
       const name = String(field?.name || '');
@@ -271,7 +271,7 @@ export class FrameParser {
         : Math.max(1, Number(field.count) || 1);
 
       if (kind === 'fixedArray' || kind === 'variableArray') {
-        map.set(name, sliceHex(offset, explicitLength || count * groupSize));
+        map.set(name, byteRange(offset, explicitLength || count * groupSize));
         if (field.arrayOrder === 'interleaved') {
           const channelBytes = Array.from({ length: channels }, () => []);
           for (let sample = 0; sample < count; sample += 1) {
@@ -282,11 +282,13 @@ export class FrameParser {
               sampleOffset += size;
             }
           }
-          channelBytes.forEach((items, channel) => map.set(`${name}_ch${channel + 1}`, this._bytesToHexString(items)));
+          channelBytes.forEach((items, channel) => map.set(`${name}_ch${channel + 1}`, {
+            bytes: Uint8Array.from(items)
+          }));
         } else {
           let channelOffset = offset;
           channelSizes.forEach((size, channel) => {
-            map.set(`${name}_ch${channel + 1}`, sliceHex(channelOffset, count * size));
+            map.set(`${name}_ch${channel + 1}`, byteRange(channelOffset, count * size));
             channelOffset += count * size;
           });
         }
@@ -294,7 +296,7 @@ export class FrameParser {
       }
 
       const size = this._typeByteLength(field.type) * Math.max(1, Number(field.count) || 1);
-      map.set(name, sliceHex(offset, size));
+      map.set(name, byteRange(offset, size));
     });
 
     return map;
@@ -419,14 +421,22 @@ export class FrameParser {
       (frame.datasets || []).forEach((dataset, i) => {
         const index = Number.isInteger(dataset.index) ? dataset.index : i + indexBase;
         const configured = datasetByIndex.get(index);
-        const configuredRaw = configured?.sourceField ? rawBySourceField.get(configured.sourceField) : '';
+        const configuredRaw = configured?.sourceField ? rawBySourceField.get(configured.sourceField) : null;
+        const parserRaw = dataset.rawBytes ?? dataset.raw ?? dataset.rawHex;
         datasets[index] = {
           title: dataset.title || configured?.title || `Channel ${index + 1}`,
           units: dataset.units ?? configured?.units ?? '',
           index,
+          sourceField: configured?.sourceField || dataset.sourceField || '',
           sourceId: this._sourceId(),
           value: typeof dataset.value === 'number' ? dataset.value : parseFloat(dataset.value) || 0,
-          raw: dataset.raw || dataset.rawHex || configuredRaw || '',
+          ...(parserRaw !== undefined && parserRaw !== null && parserRaw !== ''
+            ? { rawBytes: rawValueToBytes(parserRaw) }
+            : configuredRaw?.bytes
+              ? { rawBytes: configuredRaw.bytes }
+              : configuredRaw
+                ? { rawRange: configuredRaw }
+                : {}),
           ...(Array.isArray(dataset.buffer) ? { buffer: dataset.buffer } : {}),
           ...(Number.isFinite(Number(dataset.sampleRate)) && Number(dataset.sampleRate) > 0
             ? { sampleRate: Number(dataset.sampleRate) }
@@ -735,6 +745,11 @@ export class FrameParser {
   }
 
   _emitFrame(frame) {
+    const rawFrameId = rawFrameStore.ensureFrame(frame);
+    if (rawFrameId != null) {
+      frame.rawBytes = rawFrameStore.get(rawFrameId)?.bytes || frame.rawBytes;
+      delete frame.raw;
+    }
     FrameParser._globalFrameCount = (FrameParser._globalFrameCount || 0) + 1;
     FrameParser._globalFrameRateCounter = (FrameParser._globalFrameRateCounter || 0) + 1;
     appState.frameCount = FrameParser._globalFrameCount;

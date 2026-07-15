@@ -157,39 +157,8 @@ function addPlan(planMap, cfg, subscriptions) {
 function buildConnectionPlans(cfg) {
   const fallbackQos = Number(cfg.qos) || 0;
   const plans = new Map();
-
-  if (Array.isArray(cfg.connections)) {
-    cfg.connections.forEach((connection, index) => {
-      const connectionCfg = { ...cfg, ...connection, clientId: connection.clientId || `${cfg.clientId || 'web-serial-studio'}-${index + 1}` };
-      const subscriptions = Array.isArray(connection.subscriptions)
-        ? connection.subscriptions.map((item) => normalizeSubscription(item, fallbackQos)).filter(Boolean)
-        : [normalizeSubscription({ topic: connection.topic || connection.mqttTopic, qos: connection.qos ?? fallbackQos }, fallbackQos)].filter(Boolean);
-      addPlan(plans, connectionCfg, subscriptions);
-    });
-  }
-
-  const configSubscriptions = Array.isArray(cfg.subscriptions)
-    ? cfg.subscriptions.map((item) => normalizeSubscription(item, fallbackQos)).filter(Boolean)
-    : [];
   const singleSubscription = normalizeSubscription({ topic: cfg.topic, qos: fallbackQos }, fallbackQos);
-  if (configSubscriptions.length || singleSubscription) {
-    addPlan(plans, cfg, configSubscriptions.length ? configSubscriptions : [singleSubscription]);
-  }
-
-  const sources = Array.isArray(appState.project?.sources) ? appState.project.sources : [];
-  sources.forEach((source) => {
-    const type = String(source.type || source.busType || source.bus || '').toLowerCase();
-    const topic = source.topic || source.mqttTopic;
-    if (!topic && type !== 'mqtt') return;
-    const sourceCfg = sourceConnectionConfig(cfg, source);
-    const subscription = normalizeSubscription({
-      topic,
-      sourceId: source.sourceId,
-      title: source.title,
-      qos: source.qos ?? fallbackQos
-    }, fallbackQos);
-    addPlan(plans, sourceCfg, [subscription]);
-  });
+  if (singleSubscription) addPlan(plans, cfg, [singleSubscription]);
 
   return [...plans.values()];
 }

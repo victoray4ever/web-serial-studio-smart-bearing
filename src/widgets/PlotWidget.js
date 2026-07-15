@@ -6,6 +6,7 @@ import { eventBus } from '../core/EventBus.js';
 import { appState } from '../core/AppState.js';
 import { formatValue, getDatasetColor, getDatasetColorAlpha } from '../utils/helpers.js';
 import { datasetFromFrame } from './datasetSource.js';
+import { rawFrameStore } from '../core/RawFrameStore.js';
 
 export class PlotWidget extends WidgetBase {
   constructor(config = {}) {
@@ -303,24 +304,16 @@ export class PlotWidget extends WidgetBase {
     this._scheduleChartUpdate();
   }
 
-  _rawHexForDataset(frame, dataset) {
-    if (dataset?.raw !== undefined && dataset.raw !== null && dataset.raw !== '') return String(dataset.raw);
-    if (dataset?.rawHex !== undefined && dataset.rawHex !== null && dataset.rawHex !== '') return String(dataset.rawHex);
-    if (Array.isArray(dataset?.rawBytes)) {
-      return dataset.rawBytes.map((byte) => Number(byte).toString(16).padStart(2, '0').toUpperCase()).join(' ');
-    }
-    return frame.raw || '';
-  }
-
   _appendRawHistory(frame, dataset, datasetSlot = 0) {
+    const frameId = rawFrameStore.ensureFrame(frame);
+    if (frameId == null) return;
     this._rawHistory.push({
-      timestamp: new Date(frame.timestamp || Date.now()).toISOString(),
+      frameId,
       dataset: this._datasetLabels[datasetSlot] || dataset?.title || this.config.title || '',
-      sourceId: frame.sourceId || '',
-      topic: frame.topic || '',
-      raw: this._rawHexForDataset(frame, dataset)
+      datasetIndex: dataset?.rawDatasetIndex ?? dataset?.index ?? this._datasetIndices[datasetSlot],
+      sourceField: dataset?.sourceField || ''
     });
-    const limit = Math.max(1000, appState.points * 4);
+    const limit = 5000;
     if (this._rawHistory.length > limit) this._rawHistory.splice(0, this._rawHistory.length - limit);
   }
 
@@ -346,12 +339,20 @@ export class PlotWidget extends WidgetBase {
 
   _exportRawFrames() {
     if (!this._rawHistory.length) return null;
+    const records = this._rawHistory.map((item) => {
+      const entry = rawFrameStore.get(item.frameId);
+      if (!entry) return null;
+      const raw = rawFrameStore.toHex(item.frameId, item.datasetIndex, item.sourceField);
+      if (!raw) return null;
+      return { timestamp: new Date(entry.timestamp).toISOString(), dataset: item.dataset, raw };
+    }).filter(Boolean);
+    if (!records.length) return null;
     return {
       filename: `${this._safeFileName(this.config.title)}_raw_frames.csv`,
       rows: [
         ...(this._datasetIndices.length > 1
-          ? [['timestamp', 'dataset', 'rawHex'], ...this._rawHistory.map((item) => [item.timestamp, item.dataset, item.raw])]
-          : [['timestamp', 'rawHex'], ...this._rawHistory.map((item) => [item.timestamp, item.raw])])
+          ? [['timestamp', 'dataset', 'rawHex'], ...records.map((item) => [item.timestamp, item.dataset, item.raw])]
+          : [['timestamp', 'rawHex'], ...records.map((item) => [item.timestamp, item.raw])])
       ]
     };
   }

@@ -719,6 +719,21 @@ function createWindow() {
           hasChart: !!window.Chart,
           hasMqtt: !!window.mqtt
         })`);
+        const simplifiedSettings = await win.webContents.executeJavaScript(`(async () => {
+          document.querySelector('[data-bus="MQTT"]')?.click();
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          const mqttHasSubscriptionList = !!document.querySelector('#drv-mqtt-subscriptions');
+          const sidebarHasHistoryPoints = !!document.querySelector('#cfg-points');
+          document.querySelector('#btn-preferences')?.click();
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          const preferencesHasHistoryPoints = !!document.querySelector('#pref-points');
+          document.querySelector('#pref-close')?.click();
+          return {
+            mqttSingleTopicOnly: !mqttHasSubscriptionList,
+            historyPointsHidden: !sidebarHasHistoryPoints && !preferencesHasHistoryPoints
+          };
+        })()`);
+        result.simplifiedSettings = simplifiedSettings;
         const projectJson = await win.webContents.executeJavaScript(`(async () => {
           const { ProjectModel } = await import('./src/core/ProjectModel.js?v=electron-smoke-20260709-1');
           const model = new ProjectModel();

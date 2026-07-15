@@ -33,10 +33,6 @@ export class PreferencesDialog {
             <div class="editor-form-section-title">${t('preferences.display')}</div>
             <div class="editor-form-grid">
               <div class="form-row">
-                <div class="form-label">${t('preferences.plotHistoryPoints')}</div>
-                <input class="form-input" id="pref-points" type="number" min="10" max="10000" value="${appState.points}">
-              </div>
-              <div class="form-row">
                 <div class="form-label">${t('common.language')}</div>
                 <select class="form-select" id="pref-language">
                   <option value="zh-CN" ${appState.locale === 'zh-CN' ? 'selected' : ''}>${t('common.chinese')}</option>
@@ -75,7 +71,7 @@ export class PreferencesDialog {
               <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
                 <img src="src/assets/cms-icon.png" alt="MEMS-CMS" style="width:42px;height:42px;border-radius:10px;box-shadow:0 4px 14px rgba(15,23,42,.12)">
                 <div>
-                  <div><strong style="color:var(--text-primary);font-size:15px">MEMS-CMS</strong> <span style="color:var(--text-muted)">v1.0.2</span></div>
+                  <div><strong style="color:var(--text-primary);font-size:15px">MEMS-CMS</strong> <span style="color:var(--text-muted)">v1.0.3</span></div>
                   <div>${zh ? 'MEMS 实验室状态监测上位机系统' : 'MEMS Condition Monitoring System desktop application'}</div>
                 </div>
               </div>
@@ -131,7 +127,6 @@ export class PreferencesDialog {
     });
 
     this._el.querySelector('#pref-reset').addEventListener('click', () => {
-      appState.points = 100;
       appState.locale = 'zh-CN';
       appState.theme = 'light';
       appState.csvExportEnabled = true;
@@ -147,7 +142,6 @@ export class PreferencesDialog {
       const nextTheme = this._el.querySelector('#pref-theme')?.value || 'light';
       const requiresReload = nextLocale !== appState.locale || nextTheme !== appState.theme;
 
-      appState.points = parseInt(this._el.querySelector('#pref-points')?.value, 10) || 100;
       appState.locale = nextLocale;
       appState.theme = nextTheme;
 

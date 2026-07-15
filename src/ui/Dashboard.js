@@ -13,6 +13,7 @@ import { FftWidget } from '../widgets/FftWidget.js?v=widget-export-20260708-1';
 import { DataGridWidget } from '../widgets/DataGridWidget.js?v=multi-mqtt-20260618-1';
 import { AccelWidget } from '../widgets/AccelWidget.js?v=multi-mqtt-20260618-1';
 import { sourceIdForDataset } from '../widgets/datasetSource.js';
+import { rawFrameStore } from '../core/RawFrameStore.js';
 
 function finiteValues(values) {
   return values
@@ -185,6 +186,7 @@ export class Dashboard {
         this._hasData = false;
         this._showEmpty();
         this._widgets.forEach((w) => w.reset?.());
+        rawFrameStore.clear();
       }
     });
   }
@@ -342,6 +344,7 @@ export class Dashboard {
   buildFromProject(project) {
     this._widgets.forEach((w) => w.destroy?.());
     this._widgets = [];
+    rawFrameStore.clear();
     const modbusOutput = (project.outputs || []).find((output) => output.type === 'modbusTcp');
     if (this._plcStatusEl) {
       this._plcStatusEl.classList.toggle('is-disabled', !modbusOutput);
@@ -652,6 +655,7 @@ export class Dashboard {
 
   _resetAll() {
     this._widgets.forEach((w) => w.reset?.());
+    rawFrameStore.clear();
     eventBus.emit('interlock:reset');
   }
 

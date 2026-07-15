@@ -6,6 +6,7 @@ import { WidgetBase } from './WidgetBase.js?v=widget-export-20260708-1';
 import { eventBus } from '../core/EventBus.js';
 import { getDatasetColor } from '../utils/helpers.js';
 import { datasetFromFrame } from './datasetSource.js';
+import { rawFrameStore } from '../core/RawFrameStore.js';
 
 const FFT_SIZES = [128, 256, 512, 1024];
 const DB_FLOOR = -120;
@@ -95,21 +96,15 @@ export class FftWidget extends WidgetBase {
 
   _supportsExport() { return true; }
 
-  _rawHexForDataset(frame, dataset) {
-    if (dataset?.raw !== undefined && dataset.raw !== null && dataset.raw !== '') return String(dataset.raw);
-    if (dataset?.rawHex !== undefined && dataset.rawHex !== null && dataset.rawHex !== '') return String(dataset.rawHex);
-    if (Array.isArray(dataset?.rawBytes)) {
-      return dataset.rawBytes.map((byte) => Number(byte).toString(16).padStart(2, '0').toUpperCase()).join(' ');
-    }
-    return frame.raw || '';
-  }
-
   _appendRawHistory(frame, matchedDatasets = []) {
+    const frameId = rawFrameStore.ensureFrame(frame);
+    if (frameId == null) return;
     matchedDatasets.forEach(({ dataset, received }) => {
       this._rawHistory.push({
-        timestamp: new Date(frame.timestamp || Date.now()).toISOString(),
+        frameId,
         dataset: dataset?.title || received?.title || this.config.title || '',
-        raw: this._rawHexForDataset(frame, received)
+        datasetIndex: received?.rawDatasetIndex ?? received?.index ?? dataset?.index,
+        sourceField: received?.sourceField || dataset?.sourceField || ''
       });
     });
     if (this._rawHistory.length > 5000) this._rawHistory.splice(0, this._rawHistory.length - 5000);
@@ -155,12 +150,20 @@ export class FftWidget extends WidgetBase {
 
   _exportRawFrames() {
     if (!this._rawHistory.length) return null;
+    const records = this._rawHistory.map((item) => {
+      const entry = rawFrameStore.get(item.frameId);
+      if (!entry) return null;
+      const raw = rawFrameStore.toHex(item.frameId, item.datasetIndex, item.sourceField);
+      if (!raw) return null;
+      return { timestamp: new Date(entry.timestamp).toISOString(), dataset: item.dataset, raw };
+    }).filter(Boolean);
+    if (!records.length) return null;
     return {
       filename: `${this._safeFileName(this.config.title)}_raw_frames.csv`,
       rows: [
         ...(this._datasets.length > 1
-          ? [['timestamp', 'dataset', 'rawHex'], ...this._rawHistory.map((item) => [item.timestamp, item.dataset, item.raw])]
-          : [['timestamp', 'rawHex'], ...this._rawHistory.map((item) => [item.timestamp, item.raw])])
+          ? [['timestamp', 'dataset', 'rawHex'], ...records.map((item) => [item.timestamp, item.dataset, item.raw])]
+          : [['timestamp', 'rawHex'], ...records.map((item) => [item.timestamp, item.raw])])
       ]
     };
   }

@@ -110,6 +110,7 @@ export class InterlockManager {
       return true;
     });
     const datasetIndex = Number.isInteger(Number(rule.index)) ? Number(rule.index) : Number(datasetDef?.index);
+    state.sourceIndex = datasetIndex;
     const received = Number.isInteger(datasetIndex) ? frame?.datasets?.[datasetIndex] : null;
     const actualSourceId = received?.sourceId ?? frame?.sourceId;
     if (rule.sourceId && actualSourceId !== undefined && String(actualSourceId) !== String(rule.sourceId)) {
@@ -140,6 +141,7 @@ export class InterlockManager {
     return {
       name: rule.name || rule.sourceField || 'Interlock Rule',
       sourceField: rule.sourceField || '',
+      sourceIndex: state.sourceIndex,
       method: rule.method || 'rms',
       threshold: Number(rule.threshold),
       value,
@@ -156,6 +158,8 @@ export class InterlockManager {
       title: '联锁实时计算',
       datasets: rules.map((rule, index) => ({
         index,
+        rawDatasetIndex: rule.sourceIndex,
+        sourceField: rule.sourceField,
         title: rule.name,
         value: rule.value,
         buffer: Number.isFinite(rule.value) ? [rule.value] : [],
@@ -163,7 +167,8 @@ export class InterlockManager {
         alarm: rule.alarm,
         threshold: rule.threshold,
         sourceId: 'interlock'
-      }))
+      })),
+      rawFrameId: frame?.rawFrameId
     });
   }
 

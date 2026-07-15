@@ -1,6 +1,6 @@
 {
   "name": "mems-cms",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "MEMS-CMS desktop application.",
   "productName": "MEMS-CMS",
   "main": "electron/main.js",
@@ -25,8 +25,8 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "adore8857",
-        "repo": "MEMS-CMS-APP",
+        "owner": "victoray4ever",
+        "repo": "web-serial-studio-smart-bearing",
         "releaseType": "release"
       }
     ],
@@ -44,11 +44,20 @@
       "main": "electron/main.js"
     },
     "win": {
-      "signAndEditExecutable": false,
+      "signAndEditExecutable": true,
       "target": [
         "nsis",
         "portable"
       ]
+    },
+    "nsis": {
+  "artifactName": "MEMS-CMS-Setup-${version}.${ext}",
+  "oneClick": false,
+  "allowToChangeInstallationDirectory": true,
+  "perMachine": false
+    },
+    "portable": {
+      "artifactName": "MEMS-CMS-Portable-${version}.${ext}"
     },
     "linux": {
       "target": [

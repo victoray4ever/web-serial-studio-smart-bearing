@@ -36,7 +36,6 @@ function createDefaultMqttConfig() {
     port: 1883,
     path: '/mqtt',
     topic: 'sensor/data',
-    subscriptions: [],
     retain: false,
     clean: true,
     username: '',
@@ -208,7 +207,12 @@ class AppState {
     this._saveSettings();
   }
   updateMqttConfig(cfg) {
-    Object.assign(this._mqttConfig, cfg);
+    const singleTopicConfig = { ...cfg };
+    delete singleTopicConfig.connections;
+    delete singleTopicConfig.subscriptions;
+    delete this._mqttConfig.connections;
+    delete this._mqttConfig.subscriptions;
+    Object.assign(this._mqttConfig, singleTopicConfig);
     this._saveSettings();
   }
   updateUdpConfig(cfg) {
@@ -230,7 +234,6 @@ class AppState {
         locale: this._locale,
         theme: this._theme,
         csvExportEnabled: this._csvExportEnabled,
-        points: this._points,
         serialConfig: this._serialConfig,
         wsConfig: this._wsConfig,
         mqttConfig: this._mqttConfig,
@@ -251,10 +254,14 @@ class AppState {
       if (s.locale) this._locale = s.locale;
       if (s.theme) this._theme = s.theme;
       if (s.csvExportEnabled !== undefined) this._csvExportEnabled = s.csvExportEnabled;
-      if (s.points) this._points = s.points;
       if (s.serialConfig) Object.assign(this._serialConfig, s.serialConfig);
       if (s.wsConfig) Object.assign(this._wsConfig, s.wsConfig);
-      if (s.mqttConfig) Object.assign(this._mqttConfig, createDefaultMqttConfig(), s.mqttConfig);
+      if (s.mqttConfig) {
+        const singleTopicConfig = { ...s.mqttConfig };
+        delete singleTopicConfig.connections;
+        delete singleTopicConfig.subscriptions;
+        Object.assign(this._mqttConfig, createDefaultMqttConfig(), singleTopicConfig);
+      }
       if (s.udpConfig) Object.assign(this._udpConfig, createDefaultUdpConfig(), s.udpConfig);
       if (s.frameConfig) Object.assign(this._frameConfig, s.frameConfig);
     } catch (e) { /* ignore */ }

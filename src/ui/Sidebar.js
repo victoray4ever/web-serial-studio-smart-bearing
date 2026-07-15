@@ -150,15 +150,6 @@ export class Sidebar {
             </div>
           </div>
 
-          <div class="sidebar-section">
-            <div class="sidebar-section-label">${t('sidebar.plotSettings')}</div>
-            <div class="sidebar-section-content">
-              <div class="form-row">
-                <div class="form-label">${t('sidebar.historyPoints')}</div>
-                <input class="form-input" id="cfg-points" type="number" min="10" max="5000" value="${appState.points}">
-              </div>
-            </div>
-          </div>
         </div>
         <div class="sidebar-status">
           <div class="sidebar-status-dot" id="status-dot"></div>
@@ -204,8 +195,6 @@ export class Sidebar {
     const startDel = this._container.querySelector('#cfg-start-del');
     if (startDel) startDel.addEventListener('change', () => appState.updateFrameConfig({ startDelimiter: startDel.value }));
 
-    const pointsInput = this._container.querySelector('#cfg-points');
-    if (pointsInput) pointsInput.addEventListener('change', () => { appState.points = parseInt(pointsInput.value, 10) || 100; });
 
     this._bindJsonEditor();
     this._toggleJsonEditor(appState.operationMode);
@@ -639,22 +628,11 @@ export class Sidebar {
     const preview = host
       ? (isTcp ? `mqtt://${host}:1883` : `${useSSL ? 'wss' : 'ws'}://${host}:${port}${normalizedPath}`)
       : t('sidebar.waitingForHost');
-    const subscriptionLines = Array.isArray(cfg.subscriptions)
-      ? cfg.subscriptions.map((subscription) => {
-        if (typeof subscription === 'string') return subscription;
-        const topic = subscription.topic || subscription.mqttTopic || '';
-        const sourceId = subscription.sourceId ?? subscription.source ?? '';
-        return sourceId ? `${topic} | ${sourceId}` : topic;
-      }).filter(Boolean).join('\n')
-      : '';
     const note = isDesktop
       ? (appState.locale === 'zh-CN'
         ? '软件端使用 Electron/Node 直接连接 MQTT TCP 1883 端口，例如 mqtt://host:1883。默认不启用 SSL/TLS，不需要 Broker 的 WebSocket MQTT 端口。'
         : 'The desktop app connects directly to MQTT TCP port 1883, for example mqtt://host:1883. SSL/TLS is disabled by default and a WebSocket MQTT listener is not required.')
       : t('sidebar.mqttHelper');
-    const multiTopicNote = appState.locale === 'zh-CN'
-      ? '多主题格式：每行 topic 或 topic | sourceId。sourceId 用于绑定项目 sources 中的解析器。'
-      : 'Multi-topic format: one topic per line, or topic | sourceId.';
 
     return `
       <div class="mqtt-config-grid">
@@ -704,10 +682,6 @@ export class Sidebar {
           <div class="form-label">${t('sidebar.topic')}</div>
           <input class="form-input" id="drv-mqtt-topic" value="${cfg.topic || ''}" placeholder="sensor/data">
         </div>
-        <div class="form-row" style="grid-column:1 / -1">
-          <div class="form-label">${appState.locale === 'zh-CN' ? '订阅主题列表' : 'Subscriptions'}</div>
-          <textarea class="form-input mono" id="drv-mqtt-subscriptions" rows="4" placeholder="bearing/v2/data | bearing-v2&#10;gearbox/data | gearbox">${subscriptionLines}</textarea>
-        </div>
         ${isDesktop ? '' : `
           <div class="form-row">
             <div class="form-label">${t('sidebar.websocketPath')}</div>
@@ -740,7 +714,7 @@ export class Sidebar {
       <div class="mqtt-helper-card">
         <div class="mqtt-helper-title">${isDesktop ? (appState.locale === 'zh-CN' ? 'MQTT 连接地址' : 'MQTT Connection URL') : t('sidebar.browserEndpoint')}</div>
         <div class="mqtt-helper-url mono">${preview}</div>
-        <div class="mqtt-helper-note">${note} ${multiTopicNote}</div>
+        <div class="mqtt-helper-note">${note}</div>
       </div>`;
   }
 
@@ -767,7 +741,6 @@ export class Sidebar {
         host: panel.querySelector('#drv-mqtt-host')?.value?.trim() || '',
         port,
         topic: panel.querySelector('#drv-mqtt-topic')?.value?.trim() || '',
-        subscriptions: this._parseMqttSubscriptionLines(panel.querySelector('#drv-mqtt-subscriptions')?.value || ''),
         path: effectivePath,
         username: panel.querySelector('#drv-mqtt-user')?.value || '',
         password: panel.querySelector('#drv-mqtt-pass')?.value || '',
@@ -806,22 +779,11 @@ export class Sidebar {
         ? `${useSSL ? 'mqtts' : 'mqtt'}://${host}:${port}`
         : `${useSSL ? 'wss' : 'ws'}://${host}:${port}${normalizedPath}`)
       : t('sidebar.waitingForHost');
-    const subscriptionLines = Array.isArray(cfg.subscriptions)
-      ? cfg.subscriptions.map((subscription) => {
-        if (typeof subscription === 'string') return subscription;
-        const topic = subscription.topic || subscription.mqttTopic || '';
-        const sourceId = subscription.sourceId ?? subscription.source ?? '';
-        return sourceId ? `${topic} | ${sourceId}` : topic;
-      }).filter(Boolean).join('\n')
-      : '';
     const note = isDesktop
       ? (appState.locale === 'zh-CN'
         ? '软件端通过 Electron/Node 直接连接 MQTT 服务器。默认端口为 1883；如启用 SSL/TLS，通常使用 8883。此模式不需要 WebSocket 路径。'
         : 'The desktop app connects directly to the MQTT broker through Electron/Node. The default port is 1883; SSL/TLS commonly uses 8883. No WebSocket path is required.')
       : t('sidebar.mqttHelper');
-    const multiTopicNote = appState.locale === 'zh-CN'
-      ? '多主题格式：每行 topic 或 topic | sourceId。sourceId 用于绑定项目 sources 中的解析器。'
-      : 'Multi-topic format: one topic per line, or topic | sourceId.';
 
     return `
       <div class="mqtt-config-grid">
@@ -867,10 +829,6 @@ export class Sidebar {
           <div class="form-label">${t('sidebar.topic')}</div>
           <input class="form-input" id="drv-mqtt-topic" value="${cfg.topic || ''}" placeholder="sensor/data">
         </div>
-        <div class="form-row" style="grid-column:1 / -1">
-          <div class="form-label">${appState.locale === 'zh-CN' ? '订阅主题列表' : 'Subscriptions'}</div>
-          <textarea class="form-input mono" id="drv-mqtt-subscriptions" rows="4" placeholder="bearing/v2/data | bearing-v2&#10;gearbox/data | gearbox">${subscriptionLines}</textarea>
-        </div>
         ${isDesktop ? '' : `
           <div class="form-row">
             <div class="form-label">${t('sidebar.websocketPath')}</div>
@@ -907,7 +865,7 @@ export class Sidebar {
       <div class="mqtt-helper-card">
         <div class="mqtt-helper-title">${isDesktop ? (appState.locale === 'zh-CN' ? 'MQTT 连接地址' : 'MQTT Connection URL') : t('sidebar.browserEndpoint')}</div>
         <div class="mqtt-helper-url mono">${preview}</div>
-        <div class="mqtt-helper-note">${note} ${multiTopicNote}</div>
+        <div class="mqtt-helper-note">${note}</div>
       </div>`;
   }
 
@@ -938,7 +896,6 @@ export class Sidebar {
         host: panel.querySelector('#drv-mqtt-host')?.value?.trim() || '',
         port,
         topic: panel.querySelector('#drv-mqtt-topic')?.value?.trim() || '',
-        subscriptions: this._parseMqttSubscriptionLines(panel.querySelector('#drv-mqtt-subscriptions')?.value || ''),
         path: effectivePath,
         username: panel.querySelector('#drv-mqtt-user')?.value || '',
         password: panel.querySelector('#drv-mqtt-pass')?.value || '',
@@ -956,7 +913,7 @@ export class Sidebar {
       if (preview) preview.textContent = next.brokerUrl || t('sidebar.waitingForHost');
     };
 
-    panel.querySelectorAll('#drv-mqtt-version, #drv-mqtt-mode, #drv-mqtt-qos, #drv-mqtt-keepalive, #drv-mqtt-host, #drv-mqtt-port, #drv-mqtt-topic, #drv-mqtt-subscriptions, #drv-mqtt-user, #drv-mqtt-pass, #drv-mqtt-clientid, #drv-mqtt-ssl, #drv-mqtt-clean, #drv-mqtt-retain, #drv-mqtt-path')
+    panel.querySelectorAll('#drv-mqtt-version, #drv-mqtt-mode, #drv-mqtt-qos, #drv-mqtt-keepalive, #drv-mqtt-host, #drv-mqtt-port, #drv-mqtt-topic, #drv-mqtt-user, #drv-mqtt-pass, #drv-mqtt-clientid, #drv-mqtt-ssl, #drv-mqtt-clean, #drv-mqtt-retain, #drv-mqtt-path')
       .forEach((el) => {
         if (!el) return;
         const eventName = el.type === 'checkbox' || el.tagName === 'SELECT' ? 'change' : 'input';

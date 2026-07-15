@@ -5,6 +5,7 @@ import { WidgetBase } from './WidgetBase.js?v=widget-export-20260708-1';
 import { eventBus } from '../core/EventBus.js';
 import { getDatasetColor, formatValue } from '../utils/helpers.js';
 import { datasetFromFrame } from './datasetSource.js';
+import { rawFrameStore } from '../core/RawFrameStore.js';
 
 export class GaugeWidget extends WidgetBase {
   constructor(config = {}) {
@@ -93,15 +94,16 @@ export class GaugeWidget extends WidgetBase {
   _supportsExport() { return true; }
 
   _appendHistory(frame, value, dataset = null) {
-    const timestamp = new Date(frame.timestamp || Date.now()).toISOString();
+    const timestamp = Number(frame.timestamp) || Date.now();
     this._history.push({ timestamp, value });
-    this._rawHistory.push({
-      timestamp,
-      title: frame.title || this.config.title || '',
-      sourceId: frame.sourceId || '',
-      topic: frame.topic || '',
-      raw: this._rawHexForDataset(frame, dataset)
-    });
+    const frameId = rawFrameStore.ensureFrame(frame);
+    if (frameId != null) {
+      this._rawHistory.push({
+        frameId,
+        datasetIndex: dataset?.rawDatasetIndex ?? dataset?.index ?? this._datasetIndex,
+        sourceField: dataset?.sourceField || ''
+      });
+    }
     const limit = 5000;
     if (this._history.length > limit) this._history.splice(0, this._history.length - limit);
     if (this._rawHistory.length > limit) this._rawHistory.splice(0, this._rawHistory.length - limit);
@@ -115,29 +117,27 @@ export class GaugeWidget extends WidgetBase {
       filename: `${this._safeFileName(title)}_parsed.csv`,
       rows: [
         ['timestamp', valueHeader],
-        ...this._history.map((item) => [item.timestamp, item.value])
+        ...this._history.map((item) => [new Date(item.timestamp).toISOString(), item.value])
       ]
     };
   }
 
   _exportRawFrames() {
     if (!this._rawHistory.length) return null;
+    const rows = this._rawHistory.map((item) => {
+      const entry = rawFrameStore.get(item.frameId);
+      if (!entry) return null;
+      const raw = rawFrameStore.toHex(item.frameId, item.datasetIndex, item.sourceField);
+      return raw ? [new Date(entry.timestamp).toISOString(), raw] : null;
+    }).filter(Boolean);
+    if (!rows.length) return null;
     return {
       filename: `${this._safeFileName(this.config.title)}_raw_frames.csv`,
       rows: [
         ['timestamp', 'rawHex'],
-        ...this._rawHistory.map((item) => [item.timestamp, item.raw])
+        ...rows
       ]
     };
-  }
-
-  _rawHexForDataset(frame, dataset) {
-    if (dataset?.raw !== undefined && dataset.raw !== null && dataset.raw !== '') return String(dataset.raw);
-    if (dataset?.rawHex !== undefined && dataset.rawHex !== null && dataset.rawHex !== '') return String(dataset.rawHex);
-    if (Array.isArray(dataset?.rawBytes)) {
-      return dataset.rawBytes.map((byte) => Number(byte).toString(16).padStart(2, '0').toUpperCase()).join(' ');
-    }
-    return frame.raw || '';
   }
 
   _drawGauge(value) {
