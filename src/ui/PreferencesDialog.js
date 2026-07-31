@@ -5,20 +5,27 @@ import { eventBus } from '../core/EventBus.js';
 import { appState } from '../core/AppState.js';
 import { applyTheme, t } from '../core/i18n.js?v=mems-cms-brand-20260525-2';
 import { csvSessionManager } from '../core/CsvSessionManager.js';
+import { historyStorageManager } from '../core/HistoryStorageManager.js';
 
 export class PreferencesDialog {
   constructor(modalRoot) {
     this._root = modalRoot;
     this._el = null;
     eventBus.on('ui:openPreferences', () => this.open());
+    eventBus.on('history-storage:statusChanged', () => this._refreshHistoryStorageUi());
   }
 
   open() {
     if (this._el) this.close();
     const zh = appState.locale === 'zh-CN';
     const isDesktop = !!window.memsCmsDesktop?.update;
+    const historySupported = historyStorageManager.supported;
+    const historyTitle = zh ? '\u5386\u53f2\u6570\u636e\u5b58\u50a8' : 'Historical Data Storage';
+    const historyEnable = zh ? '\u542f\u7528\u5386\u53f2\u6570\u636e\u5b58\u50a8' : 'Enable historical data storage';
+    const historyChoose = zh ? '\u9009\u62e9\u4fdd\u5b58\u76ee\u5f55' : 'Choose Storage Folder';
     const checkUpdateText = zh ? '\u68c0\u67e5\u66f4\u65b0' : 'Check for Updates';
     const checkingUpdateText = zh ? '\u6b63\u5728\u68c0\u67e5\u66f4\u65b0...' : 'Checking for updates...';
+    const appVersion = window.memsCmsDesktop?.app?.version || (zh ? '开发版' : 'Development');
 
     this._el = document.createElement('div');
     this._el.className = 'modal-overlay animate-fadeIn';
@@ -65,13 +72,33 @@ export class PreferencesDialog {
             </div>
           </div>
 
+          <div class="editor-form-section" style="margin-bottom:20px">
+            <div class="editor-form-section-title">${historyTitle}</div>
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <label class="checkbox-wrap">
+                <input type="checkbox" id="pref-history-enabled" ${appState.historyStorageEnabled ? 'checked' : ''} ${historySupported ? '' : 'disabled'}>
+                <span>${historyEnable}</span>
+              </label>
+              <div style="display:flex;gap:8px;align-items:center">
+                <button class="btn" id="pref-history-path" ${historySupported ? '' : 'disabled'}>${historyChoose}</button>
+                <span id="pref-history-state" style="font-size:12px;color:var(--text-muted)"></span>
+              </div>
+              <div id="pref-history-target" style="font-size:12px;color:var(--text-muted);word-break:break-all"></div>
+              <div style="font-size:12px;color:var(--text-muted);line-height:1.55">
+                ${zh
+                  ? '\u52fe\u9009\u540e\uff0c\u6bcf\u6b21\u8fde\u63a5\u4f1a\u81ea\u52a8\u521b\u5efa\u72ec\u7acb\u5b50\u76ee\u5f55\u5e76\u6301\u7eed\u5199\u5165\u539f\u59cb\u5e27\u3002\u8def\u5f84\u5931\u6548\u6216\u7a7a\u95f4\u4e0d\u8db3\u65f6\u53ea\u505c\u6b62\u5199\u76d8\uff0c\u4e0d\u4e2d\u65ad\u5b9e\u65f6\u63a5\u6536\u3002'
+                  : 'When enabled, each connection creates its own folder and continuously writes raw frames. A missing drive or low disk space stops storage without interrupting live reception.'}
+              </div>
+            </div>
+          </div>
+
           <div class="editor-form-section">
             <div class="editor-form-section-title">${t('preferences.about')}</div>
             <div style="font-size:13px;color:var(--text-muted);line-height:1.75">
               <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
                 <img src="src/assets/cms-icon.png" alt="MEMS-CMS" style="width:42px;height:42px;border-radius:10px;box-shadow:0 4px 14px rgba(15,23,42,.12)">
                 <div>
-                  <div><strong style="color:var(--text-primary);font-size:15px">MEMS-CMS</strong> <span style="color:var(--text-muted)">v1.0.3</span></div>
+                  <div><strong style="color:var(--text-primary);font-size:15px">MEMS-CMS</strong> <span style="color:var(--text-muted)">v${appVersion}</span></div>
                   <div>${zh ? 'MEMS 实验室状态监测上位机系统' : 'MEMS Condition Monitoring System desktop application'}</div>
                 </div>
               </div>
@@ -94,6 +121,10 @@ export class PreferencesDialog {
       </div>`;
 
     this._root.appendChild(this._el);
+    historyStorageManager.initialize()
+      .then(() => this._refreshHistoryStorageUi())
+      .catch(() => this._refreshHistoryStorageUi());
+    this._refreshHistoryStorageUi();
 
     this._el.addEventListener('click', (e) => { if (e.target === this._el) this.close(); });
     this._el.querySelector('#pref-close').addEventListener('click', () => this.close());
@@ -107,6 +138,19 @@ export class PreferencesDialog {
       } catch (error) {
         if (error?.name !== 'AbortError') {
           eventBus.emit('toast', { type: 'error', message: t('messages.csvSaveFailed', { error: error.message || error }) });
+        }
+      }
+    });
+    this._el.querySelector('#pref-history-path')?.addEventListener('click', async () => {
+      try {
+        await historyStorageManager.chooseDirectory();
+        this._refreshHistoryStorageUi();
+      } catch (error) {
+        if (error?.name !== 'AbortError') {
+          eventBus.emit('toast', {
+            type: 'error',
+            message: `${zh ? '\u65e0\u6cd5\u8bbe\u7f6e\u5386\u53f2\u6570\u636e\u76ee\u5f55' : 'Could not set historical data folder'}: ${error?.message || error}`
+          });
         }
       }
     });
@@ -131,6 +175,7 @@ export class PreferencesDialog {
       appState.theme = 'light';
       appState.csvExportEnabled = true;
       appState.consoleExportEnabled = false;
+      appState.historyStorageEnabled = false;
       applyTheme();
       this.close();
       eventBus.emit('toast', { type: 'info', message: t('preferences.resetSuccess') });
@@ -147,6 +192,15 @@ export class PreferencesDialog {
 
       appState.csvExportEnabled = this._el.querySelector('#pref-csv')?.checked ?? true;
       appState.consoleExportEnabled = this._el.querySelector('#pref-console-log')?.checked ?? false;
+      appState.historyStorageEnabled = this._el.querySelector('#pref-history-enabled')?.checked ?? false;
+      if (appState.historyStorageEnabled && !historyStorageManager.directoryPath) {
+        eventBus.emit('toast', {
+          type: 'warning',
+          message: nextLocale === 'zh-CN'
+            ? '\u5df2\u542f\u7528\u5386\u53f2\u6570\u636e\u5b58\u50a8\uff0c\u8bf7\u5148\u9009\u62e9\u4fdd\u5b58\u76ee\u5f55'
+            : 'Historical data storage is enabled; choose a storage folder before connecting.'
+        });
+      }
 
       applyTheme();
       eventBus.emit('toast', { type: 'success', message: requiresReload ? t('preferences.reloadNotice') : t('preferences.saveSuccess') });
@@ -162,6 +216,36 @@ export class PreferencesDialog {
     if (this._el) {
       this._el.remove();
       this._el = null;
+    }
+  }
+
+  _refreshHistoryStorageUi() {
+    if (!this._el) return;
+    const zh = appState.locale === 'zh-CN';
+    const target = this._el.querySelector('#pref-history-target');
+    const state = this._el.querySelector('#pref-history-state');
+    if (target) {
+      target.textContent = historyStorageManager.directoryPath
+        ? `${zh ? '\u4fdd\u5b58\u8def\u5f84' : 'Storage path'}: ${historyStorageManager.directoryPath}`
+        : (zh ? '\u5c1a\u672a\u9009\u62e9\u4fdd\u5b58\u76ee\u5f55' : 'No storage folder selected');
+    }
+    if (state) {
+      if (!historyStorageManager.supported) {
+        state.textContent = zh ? '\u4ec5\u684c\u9762\u7248\u53ef\u7528' : 'Desktop app only';
+        state.style.color = 'var(--color-warning, #f59e0b)';
+      } else if (historyStorageManager.active) {
+        state.textContent = zh ? '\u6b63\u5728\u5199\u5165' : 'Writing';
+        state.style.color = 'var(--color-success, #10b981)';
+      } else if (appState.historyStorageEnabled && historyStorageManager.errorMessage) {
+        state.textContent = `${zh ? '\u5199\u5165\u5df2\u505c\u6b62' : 'Storage stopped'}: ${historyStorageManager.errorMessage}`;
+        state.style.color = 'var(--color-danger, #ef4444)';
+      } else if (appState.historyStorageEnabled) {
+        state.textContent = zh ? '\u5df2\u542f\u7528\uff0c\u7b49\u5f85\u8fde\u63a5' : 'Enabled, waiting for connection';
+        state.style.color = 'var(--text-muted)';
+      } else {
+        state.textContent = zh ? '\u672a\u542f\u7528' : 'Disabled';
+        state.style.color = 'var(--text-muted)';
+      }
     }
   }
 }

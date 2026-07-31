@@ -1,24 +1,23 @@
 const { app, BrowserWindow, Menu, shell, session, ipcMain, dialog } = require('electron');
 const path = require('path');
-const fs = require('fs');
-const net = require('net');
-const dgram = require('dgram');
 const mqtt = require('mqtt');
-const ModbusRTU = require('modbus-serial');
-const { autoUpdater } = require('electron-updater');
 const { startIntegratedUdpGateway } = require('./udpGateway');
+const { setupHistoryStorageIpc } = require('./historyStorage');
+const { createUpdateManager } = require('./updateManager');
 
 const isSmokeTest = process.env.ELECTRON_SMOKE_TEST === '1';
 const isDevMode = !app.isPackaged;
+const appIconPath = path.join(__dirname, '..', 'src', 'assets', 'cms-icon.ico');
 let udpGatewayServer = null;
+let udpGatewayPort = 8765;
 const mqttSessions = new Map();
 let mainWindow = null;
-let updateCheckInProgress = false;
+let updateManager = null;
+let historyStorage = null;
+let historyShutdownStarted = false;
+let historyShutdownComplete = false;
 
-function canUseAutoUpdater() {
-  if (isSmokeTest || isDevMode) return false;
-  return fs.existsSync(path.join(process.resourcesPath, 'app-update.yml'));
-}
+app.setAppUserModelId('edu.neu.memslab.cms');
 
 function ipcPayloadToBuffer(payload, payloadBase64) {
   if (payloadBase64) return Buffer.from(String(payloadBase64), 'base64');
@@ -170,110 +169,6 @@ function setupMqttIpc() {
   ipcMain.handle('mqtt-tcp:disconnect', async (_event, sessionId = 'default') => {
     closeMqttSession(String(sessionId || 'default'));
     return { ok: true };
-  });
-}
-
-function setupPlcOutputIpc() {
-  ipcMain.handle('plc:test', async (_event, options = {}) => {
-    if (String(options.type || '') !== 'modbusTcp') throw new Error('Connection test currently supports Modbus TCP only.');
-    const host = String(options.host || '').trim();
-    const port = Number(options.port) || 502;
-    const unitId = Math.max(0, Math.min(255, Number(options.unitId) || 1));
-    const address = Math.max(0, Number(options.address) || 0);
-    const timeout = Math.max(500, Number(options.timeout) || 3000);
-    const operation = options.modbusOperation === 'writeRegister' ? 'writeRegister' : 'writeCoil';
-    if (!host) throw new Error('Modbus TCP connection test requires PLC host.');
-
-    const client = new ModbusRTU();
-    client.setID(unitId);
-    client.setTimeout(timeout);
-    try {
-      await client.connectTCP(host, { port });
-      const response = operation === 'writeRegister'
-        ? await client.readHoldingRegisters(address, 1)
-        : await client.readCoils(address, 1);
-      return {
-        ok: true, type: 'modbusTcp', host, port, unitId, address,
-        operation: operation === 'writeRegister' ? 'readHoldingRegister' : 'readCoil',
-        value: response?.data?.[0]
-      };
-    } finally {
-      try { client.close(() => {}); } catch (_error) { /* connection may not have opened */ }
-    }
-  });
-
-  ipcMain.handle('plc:send', async (_event, options = {}) => {
-    const type = String(options.type || 'none');
-    const payload = ipcPayloadToBuffer(options.payload, options.payloadBase64);
-
-    if (type === 'udp') {
-      if (!payload.length) throw new Error('PLC command payload is empty.');
-      const host = String(options.host || '').trim();
-      const port = Number(options.port);
-      if (!host || !port) throw new Error('UDP output requires host and port.');
-      const socket = dgram.createSocket('udp4');
-      try {
-        await new Promise((resolve, reject) => {
-          socket.send(payload, port, host, (error) => (error ? reject(error) : resolve()));
-        });
-      } finally {
-        socket.close();
-      }
-      return { ok: true, type, bytes: payload.length };
-    }
-
-    if (type === 'tcp') {
-      if (!payload.length) throw new Error('PLC command payload is empty.');
-      const host = String(options.host || '').trim();
-      const port = Number(options.port);
-      if (!host || !port) throw new Error('TCP output requires host and port.');
-      await new Promise((resolve, reject) => {
-        const socket = net.createConnection({ host, port, timeout: 3000 }, () => {
-          socket.write(payload, (error) => {
-            if (error) reject(error);
-            socket.end();
-          });
-        });
-        socket.on('close', resolve);
-        socket.on('timeout', () => {
-          socket.destroy();
-          reject(new Error('TCP output timeout.'));
-        });
-        socket.on('error', reject);
-      });
-      return { ok: true, type, bytes: payload.length };
-    }
-
-    if (type === 'modbusTcp') {
-      const host = String(options.host || '').trim();
-      const port = Number(options.port) || 502;
-      const unitId = Math.max(0, Math.min(255, Number(options.unitId) || 1));
-      const address = Math.max(0, Number(options.address) || 0);
-      const timeout = Math.max(500, Number(options.timeout) || 3000);
-      const operation = options.modbusOperation === 'writeRegister' ? 'writeRegister' : 'writeCoil';
-      const isReset = ['interlock-reset', 'interlock-recovered'].includes(options.context?.reason);
-      const configuredValue = isReset ? options.inactiveValue : options.activeValue;
-      if (!host) throw new Error('Modbus TCP output requires PLC host.');
-
-      const client = new ModbusRTU();
-      client.setID(unitId);
-      client.setTimeout(timeout);
-      try {
-        await client.connectTCP(host, { port });
-        if (operation === 'writeRegister') {
-          const value = Math.max(0, Math.min(0xffff, Number(configuredValue) || 0));
-          await client.writeRegister(address, value);
-          return { ok: true, type, operation, host, port, unitId, address, value };
-        }
-        const value = configuredValue === true || configuredValue === 1 || String(configuredValue).toLowerCase() === 'true' || String(configuredValue) === '1';
-        await client.writeCoil(address, value);
-        return { ok: true, type, operation, host, port, unitId, address, value };
-      } finally {
-        try { client.close(() => {}); } catch (_error) { /* connection may not have opened */ }
-      }
-    }
-
-    throw new Error(`PLC output type "${type}" is not implemented yet.`);
   });
 }
 
@@ -582,94 +477,6 @@ function configureSerialPermissions() {
   });
 }
 
-function setupAutoUpdater() {
-  if (isSmokeTest || isDevMode) return;
-
-  autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = false;
-
-  autoUpdater.on('update-available', async (info) => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-    const version = info?.version ? ` v${info.version}` : '';
-    const result = await dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: '发现新版本',
-      message: `发现 MEMS-CMS${version}，是否现在下载更新？`,
-      detail: '下载完成后会再次询问是否立即重启并安装。当前采集任务不会被自动中断。',
-      buttons: ['下载更新', '稍后再说'],
-      defaultId: 0,
-      cancelId: 1,
-      noLink: true
-    });
-    if (result.response === 0) {
-      autoUpdater.downloadUpdate().catch((error) => {
-        dialog.showErrorBox('更新下载失败', error?.message || String(error));
-      });
-    }
-  });
-
-  autoUpdater.on('update-not-available', () => {
-    updateCheckInProgress = false;
-    return;
-    if (updateCheckInProgress && mainWindow && !mainWindow.isDestroyed()) {
-      dialog.showMessageBox(mainWindow, {
-        type: 'info',
-        title: '已是最新版本',
-        message: '当前 MEMS-CMS 已经是最新版本。',
-        buttons: ['确定'],
-        noLink: true
-      });
-    }
-    updateCheckInProgress = false;
-  });
-
-  autoUpdater.on('update-downloaded', async (info) => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-    const version = info?.version ? ` v${info.version}` : '';
-    const result = await dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: '更新已下载',
-      message: `MEMS-CMS${version} 已下载完成，是否立即重启并安装？`,
-      detail: '如果正在采集或保存数据，请先保存当前工作，再选择重启安装。',
-      buttons: ['立即重启安装', '下次启动再安装'],
-      defaultId: 0,
-      cancelId: 1,
-      noLink: true
-    });
-    if (result.response === 0) {
-      autoUpdater.quitAndInstall(false, true);
-    }
-  });
-
-  autoUpdater.on('error', (error) => {
-    const isManualCheck = updateCheckInProgress;
-    updateCheckInProgress = false;
-    if (!isManualCheck) {
-      console.warn('[auto-update] check skipped or failed:', error?.message || error);
-      return;
-    }
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-    dialog.showErrorBox('更新检查失败', error?.message || String(error));
-  });
-
-  ipcMain.handle('app:update:check', async () => {
-    if (!canUseAutoUpdater()) return { ok: false, skipped: true };
-    updateCheckInProgress = true;
-    await autoUpdater.checkForUpdates();
-    return { ok: true };
-  });
-}
-
-function checkForUpdatesQuietly() {
-  if (!canUseAutoUpdater()) return;
-  setTimeout(() => {
-    updateCheckInProgress = false;
-    autoUpdater.checkForUpdates().catch(() => {
-      updateCheckInProgress = false;
-    });
-  }, 5000);
-}
-
 function createWindow() {
   const win = new BrowserWindow({
     width: 1440,
@@ -677,7 +484,7 @@ function createWindow() {
     minWidth: 1180,
     minHeight: 760,
     title: 'MEMS-CMS',
-    icon: path.join(__dirname, '..', 'src', 'assets', 'cms-icon.png'),
+    icon: appIconPath,
     backgroundColor: '#ffffff',
     show: false,
     webPreferences: {
@@ -711,6 +518,7 @@ function createWindow() {
       try {
         const result = await win.webContents.executeJavaScript(`({
           title: document.title,
+          appVersion: window.memsCmsDesktop?.app?.version || '',
           hasApp: !!document.querySelector('#app'),
           hasSerialApi: !!navigator.serial,
           hasToolbarRoot: !!document.querySelector('#toolbar-root'),
@@ -767,8 +575,166 @@ function createWindow() {
           };
         })()`);
         result.projectJson = projectJson;
+        const multiSourceProject = await win.webContents.executeJavaScript(`(async () => {
+          const { ProjectModel } = await import('./src/core/ProjectModel.js?v=multi-source-smoke-20260729-1');
+          const { FrameParser } = await import('./src/core/FrameParser.js?v=multi-source-smoke-20260729-1');
+          const model = new ProjectModel();
+          const ok = model.loadFromJSON({
+            title: 'Multi Source Smoke',
+            protocol: 'Binary',
+            parsers: {
+              short: {
+                frameStart: '5A A5',
+                frameEnd: 'DD EE',
+                hexadecimalDelimiters: true,
+                frameParserCode: 'function parse(frame) { return [1468]; }'
+              },
+              long: {
+                frameStart: 'A5 5A',
+                frameEnd: 'EE DD',
+                hexadecimalDelimiters: true,
+                frameParserCode: 'function parse(frame) { return [5732]; }'
+              }
+            },
+            sources: [
+              { sourceId: 'node-short', parser: 'short' },
+              { sourceId: 'node-long', parser: 'long' }
+            ],
+            groups: [
+              { title: 'Short', sourceId: 'node-short', datasets: [{ title: 'A', sourceId: 'node-short', index: 0 }] },
+              { title: 'Long', sourceId: 'node-long', datasets: [{ title: 'B', sourceId: 'node-long', index: 0 }] }
+            ]
+          });
+          const shortParser = new FrameParser({
+            operationMode: 'ProjectFile',
+            project: model.project,
+            source: model.project.sources[0],
+            sourceId: 'node-short'
+          });
+          const longParser = new FrameParser({
+            operationMode: 'ProjectFile',
+            project: model.project,
+            source: model.project.sources[1],
+            sourceId: 'node-long'
+          });
+          const result = {
+            ok,
+            sources: model.project.sources.length,
+            parsers: Object.keys(model.project.parsers || {}).length,
+            shortSelected: shortParser._projectFrameParserCode().includes('1468'),
+            longSelected: longParser._projectFrameParserCode().includes('5732'),
+            duplicateDatasetIndicesPreserved: model.project.groups.every((group) => group.datasets[0]?.index === 0)
+          };
+          shortParser.destroy();
+          longParser.destroy();
+          return result;
+        })()`);
+        result.multiSourceProject = multiSourceProject;
+        const gatewayProjectBinding = await win.webContents.executeJavaScript(`(async () => {
+          const {
+            analyzeGatewayParserProject,
+            buildGatewayCombinedProject
+          } = await import('./src/ui/gateway/GatewayProjectBinding.js?v=gateway-workflow-smoke-20260729-1');
+          const analysis = analyzeGatewayParserProject({
+            title: 'Node Parser',
+            protocol: 'Binary',
+            frameParserCode: 'function parse(frame) { return [frame.length, 42]; }',
+            groups: [{
+              title: 'Signals',
+              widget: 'MultiPlot',
+              datasets: [
+                { title: 'Length', index: 0, plot: true },
+                { title: 'Value', index: 1, plot: true }
+              ]
+            }]
+          }, 'node-parser.json');
+          const project = buildGatewayCombinedProject(null, [{
+            ip: '192.168.1.251',
+            sourceId: 'node-01',
+            title: 'Node 01',
+            frame: { frameLength: 1468 }
+          }], [{
+            sourceId: 'node-01',
+            analysis,
+            selectedKeys: ['0:1']
+          }]);
+          return {
+            ok: project.sources?.[0]?.parser === 'parser-node-01',
+            parserFileName: project.sources?.[0]?.parserFileName,
+            selectedDatasets: project.groups?.flatMap((group) => group.datasets || []).length,
+            selectedTitle: project.groups?.[0]?.datasets?.[0]?.title,
+            sourceId: project.groups?.[0]?.datasets?.[0]?.sourceId
+          };
+        })()`);
+        result.gatewayProjectBinding = gatewayProjectBinding;
+        const gatewayWorkflowUi = await win.webContents.executeJavaScript(`(async () => {
+          const { GatewayConfigDialog } = await import('./src/ui/GatewayConfigDialog.js?v=gateway-workflow-ui-smoke-20260729-1');
+          const root = document.querySelector('#modal-root');
+          const dialog = new GatewayConfigDialog(root);
+          dialog.open();
+          dialog._config = {
+            udp: { host: '0.0.0.0', port: 4000 },
+            websocket: { host: '127.0.0.1', port: 8765 },
+            routing: {
+              unknownDevices: 'ip',
+              devices: [{ ip: '192.168.1.251', sourceId: 'node-01', title: 'Node 01' }]
+            },
+            aggregation: {
+              mode: 'frame',
+              frame: { startDelimiter: '5A A5', endDelimiter: 'DD EE', frameLength: 1468 }
+            },
+            status: { intervalMs: 1000, offlineAfterMs: 5000 }
+          };
+          dialog._initializeDevices();
+          dialog._renderCurrent();
+          const modal = root.querySelector('.gateway-config-modal');
+          const deviceResult = {
+            tabs: root.querySelectorAll('[data-gateway-tab]').length,
+            identityFields: root.querySelectorAll('[data-device-field]').length,
+            essentialFrameFields: root.querySelectorAll('.gateway-device-frame-fields.essential [data-device-frame-field]').length,
+            parserInputs: root.querySelectorAll('[data-parser-file]').length,
+            hasOutboundControls: !!root.querySelector('#gateway-outbound-host, #gateway-default-source'),
+            fitsViewport: modal ? modal.getBoundingClientRect().width <= window.innerWidth : false
+          };
+          dialog._lastStatus = {
+            type: 'gateway.status',
+            gateway: 'Smoke Gateway',
+            frames: 12,
+            bytes: 4096,
+            incompleteFrames: 1,
+            lost: 0,
+            outOfOrder: 0,
+            dropped: 0,
+            onlineDevices: 1,
+            knownDevices: 1,
+            devices: [{
+              sourceId: 'node-01',
+              title: 'Node 01',
+              ip: '192.168.1.251',
+              port: 1030,
+              online: true,
+              frames: 12,
+              bufferedBytes: 0,
+              incompleteFrames: 1,
+              invalidFrames: 0,
+              lost: 0
+            }]
+          };
+          dialog._setTab('diagnostics');
+          const result = {
+            ...deviceResult,
+            diagnosticCards: root.querySelectorAll('.gateway-diagnostic-device').length,
+            diagnosticMetrics: root.querySelectorAll('.gateway-diagnostic-summary > div').length
+          };
+          dialog.close();
+          return result;
+        })()`);
+        result.gatewayWorkflowUi = gatewayWorkflowUi;
         const udpGateway = await win.webContents.executeJavaScript(`new Promise((resolve) => {
           let done = false;
+          let updateSent = false;
+          let saved = false;
+          const expectedIp = '192.168.137.250';
           const finish = (value) => {
             if (done) return;
             done = true;
@@ -777,14 +743,40 @@ function createWindow() {
             resolve(value);
           };
           let ws = null;
-          const timer = setTimeout(() => finish({ ok: false, error: 'timeout' }), 2000);
+          const timer = setTimeout(() => finish({ ok: false, error: 'timeout' }), 3000);
           try {
-            ws = new WebSocket('ws://127.0.0.1:8765?client=mems-cms');
+            ws = new WebSocket('ws://127.0.0.1:${udpGatewayPort}?client=mems-cms');
             ws.addEventListener('message', (event) => {
               try {
                 const message = JSON.parse(event.data);
                 if (message.type === 'gateway.hello') {
-                  finish({ ok: true, type: message.type, udp: message.udp });
+                  ws.send(JSON.stringify({ type: 'gateway.config.request' }));
+                  return;
+                }
+                if (message.type === 'gateway.config' && !updateSent) {
+                  const config = message.config || {};
+                  config.routing = config.routing || {};
+                  config.routing.devices = Array.isArray(config.routing.devices) ? config.routing.devices : [];
+                  if (!config.routing.devices.length) {
+                    config.routing.devices.push({ sourceId: 'node-01', title: 'Node 01' });
+                  }
+                  config.routing.devices[0].ip = expectedIp;
+                  updateSent = true;
+                  ws.send(JSON.stringify({ type: 'gateway.config.update', config }));
+                  return;
+                }
+                if (message.type === 'gateway.config.saved') {
+                  saved = true;
+                  ws.send(JSON.stringify({ type: 'gateway.config.request' }));
+                  return;
+                }
+                if (message.type === 'gateway.config' && saved) {
+                  finish({
+                    ok: message.config?.routing?.devices?.[0]?.ip === expectedIp,
+                    type: 'gateway.config.saved',
+                    udp: message.config?.udp,
+                    persistedIp: message.config?.routing?.devices?.[0]?.ip
+                  });
                 }
               } catch (_error) {
                 // Ignore non-status payloads.
@@ -797,7 +789,33 @@ function createWindow() {
         })`);
         result.udpGateway = udpGateway;
         console.log(JSON.stringify(result, null, 2));
-        app.exit(result.title === 'MEMS-CMS' && result.hasApp && projectJson.ok && udpGateway.ok ? 0 : 1);
+        const smokePassed =
+          result.title === 'MEMS-CMS' &&
+          result.appVersion === app.getVersion() &&
+          result.hasApp &&
+          result.hasChart &&
+          result.hasMqtt &&
+          result.simplifiedSettings?.mqttSingleTopicOnly &&
+          projectJson.ok &&
+          multiSourceProject.ok &&
+          multiSourceProject.shortSelected &&
+          multiSourceProject.longSelected &&
+          multiSourceProject.duplicateDatasetIndicesPreserved &&
+          gatewayProjectBinding.ok &&
+          gatewayProjectBinding.parserFileName === 'node-parser.json' &&
+          gatewayProjectBinding.selectedDatasets === 1 &&
+          gatewayProjectBinding.selectedTitle === 'Value' &&
+          gatewayProjectBinding.sourceId === 'node-01' &&
+          gatewayWorkflowUi.tabs === 2 &&
+          gatewayWorkflowUi.identityFields === 3 &&
+          gatewayWorkflowUi.essentialFrameFields === 3 &&
+          gatewayWorkflowUi.parserInputs === 1 &&
+          !gatewayWorkflowUi.hasOutboundControls &&
+          gatewayWorkflowUi.fitsViewport &&
+          gatewayWorkflowUi.diagnosticCards === 1 &&
+          gatewayWorkflowUi.diagnosticMetrics === 6 &&
+          udpGateway.ok;
+        app.exit(smokePassed ? 0 : 1);
       } catch (error) {
         console.error(error);
         app.exit(1);
@@ -809,20 +827,49 @@ function createWindow() {
   return win;
 }
 
-app.whenReady().then(() => {
-  setupAutoUpdater();
+app.whenReady().then(async () => {
+  if (isSmokeTest) {
+    session.defaultSession.webRequest.onBeforeRequest(
+      { urls: ['http://*/*', 'https://*/*'] },
+      (_details, callback) => callback({ cancel: true })
+    );
+  }
   setupMqttIpc();
-  setupPlcOutputIpc();
+  historyStorage = setupHistoryStorageIpc({
+    getWindow: () => mainWindow,
+    userDataPath: app.getPath('userData')
+  });
   configureSerialPermissions();
-  udpGatewayServer = startIntegratedUdpGateway({ rootDir: path.join(__dirname, '..') });
+  udpGatewayServer = startIntegratedUdpGateway({
+    rootDir: path.join(__dirname, '..'),
+    port: isSmokeTest ? 0 : udpGatewayPort,
+    udpPort: isSmokeTest ? 0 : undefined,
+    configPath: isSmokeTest
+      ? path.join(app.getPath('temp'), 'mems-cms-gateway-smoke.json')
+      : (app.isPackaged ? path.join(app.getPath('userData'), 'multi_udp_gateway.json') : undefined)
+  });
+  if (isSmokeTest && !udpGatewayServer.address()) {
+    await new Promise((resolve, reject) => {
+      udpGatewayServer.once('listening', resolve);
+      udpGatewayServer.once('error', reject);
+    });
+  }
+  udpGatewayPort = udpGatewayServer.address()?.port || udpGatewayPort;
   Menu.setApplicationMenu(null);
   mainWindow = createWindow();
-  checkForUpdatesQuietly();
+  updateManager = createUpdateManager({
+    app,
+    appIconPath,
+    getMainWindow: () => mainWindow,
+    disabled: isSmokeTest
+  });
+  updateManager.setup();
+  updateManager.checkQuietly();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       mainWindow = createWindow();
-      checkForUpdatesQuietly();
+      updateManager?.checkQuietly();
     }
   });
 });
@@ -831,4 +878,19 @@ app.on('window-all-closed', () => {
   if (udpGatewayServer) udpGatewayServer.close();
   mqttSessions.forEach((_session, sessionId) => closeMqttSession(sessionId));
   if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('before-quit', (event) => {
+  if (historyShutdownComplete) return;
+  event.preventDefault();
+  if (historyShutdownStarted) return;
+  historyShutdownStarted = true;
+  Promise.resolve(historyStorage?.shutdown())
+    .catch((error) => {
+      console.warn('[history-storage] shutdown failed:', error?.message || error);
+    })
+    .finally(() => {
+      historyShutdownComplete = true;
+      app.quit();
+    });
 });

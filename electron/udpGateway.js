@@ -21,6 +21,7 @@ function loadJson(file, fallback) {
 }
 
 function saveJson(file, data) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
   const temp = `${file}.tmp`;
   fs.writeFileSync(temp, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
   fs.renameSync(temp, file);
@@ -34,6 +35,19 @@ function hexToBuffer(value, fallback = '') {
 function sourceKey(ip, port, includePort) {
   const base = `udp-${String(ip).replace(/\./g, '-')}`;
   return includePort ? `${base}-${port}` : base;
+}
+
+function compactObject(value) {
+  if (!value || typeof value !== 'object') return null;
+  const entries = Object.entries(value).filter(([, item]) => item !== '' && item !== null && item !== undefined);
+  return entries.length ? Object.fromEntries(entries) : null;
+}
+
+function mergeFrameDefinition(defaults = {}, override = null) {
+  return {
+    ...(defaults && typeof defaults === 'object' ? defaults : {}),
+    ...(compactObject(override) || {})
+  };
 }
 
 function encodeGatewayPacket(metadata, payload) {
@@ -191,7 +205,8 @@ class DeviceRegistry {
       ip: String(item.ip || ''),
       port: item.port == null ? null : portNumber(item.port, 0),
       commandPort: item.commandPort == null ? null : portNumber(item.commandPort, 0),
-      sequence: item.sequence || routing.sequence || {}
+      sequence: item.sequence || routing.sequence || {},
+      frame: compactObject(item.frame || item.aggregation?.frame)
     }));
     this.stats = new Map();
     this.devices.forEach((device) => this.stats.set(device.sourceId, this.createStats(device, [device.ip, device.port || 0])));
@@ -227,7 +242,15 @@ class DeviceRegistry {
     if (this.unknownPolicy === 'drop') return null;
     const includePort = this.unknownPolicy === 'ip-port';
     const sourceId = sourceKey(ip, port, includePort);
-    return { sourceId, title: sourceId, ip, port, commandPort: null, sequence: this.defaultSequence };
+    return {
+      sourceId,
+      title: sourceId,
+      ip,
+      port,
+      commandPort: null,
+      sequence: this.defaultSequence,
+      frame: null
+    };
   }
 
   deviceStats(device, addr) {
@@ -253,10 +276,12 @@ class DeviceRegistry {
 }
 
 class GatewaySession {
-  constructor(rootDir, wsServer) {
+  constructor(rootDir, wsServer, { udpPort, configPath } = {}) {
     this.rootDir = rootDir;
-    this.configPath = path.join(rootDir, 'scripts', 'multi_udp_gateway.json');
+    this.defaultConfigPath = path.join(rootDir, 'scripts', 'multi_udp_gateway.json');
+    this.configPath = configPath || this.defaultConfigPath;
     this.wsServer = wsServer;
+    this.udpPortOverride = Number.isInteger(udpPort) ? udpPort : null;
     this.config = this.loadConfig();
     this.registry = new DeviceRegistry(this.config);
     this.clients = new Set();
@@ -274,7 +299,7 @@ class GatewaySession {
   }
 
   loadConfig() {
-    return loadJson(this.configPath, {
+    const defaults = {
       name: 'MEMS-CMS Multi UDP Gateway',
       udp: { host: '0.0.0.0', port: 4000 },
       websocket: { host: '127.0.0.1', port: 8765 },
@@ -283,7 +308,8 @@ class GatewaySession {
       status: { intervalMs: 1000, offlineAfterMs: 5000 },
       outbound: { defaultSourceId: '', host: '', port: 0 },
       control: { allowRemote: false }
-    });
+    };
+    return loadJson(this.configPath, loadJson(this.defaultConfigPath, defaults));
   }
 
   async ensureSocket() {
@@ -294,7 +320,10 @@ class GatewaySession {
     this.socket.on('error', (error) => this.broadcast({ type: 'gateway.error', message: error.message }));
     await new Promise((resolve, reject) => {
       this.socket.once('error', reject);
-      this.socket.bind(portNumber(udp.port, 4000), String(udp.host || '0.0.0.0'), () => {
+      const listenPort = this.udpPortOverride === 0
+        ? 0
+        : portNumber(this.udpPortOverride ?? udp.port, 4000);
+      this.socket.bind(listenPort, String(udp.host || '0.0.0.0'), () => {
         this.socket.off('error', reject);
         resolve();
       });
@@ -309,7 +338,10 @@ class GatewaySession {
       type: 'gateway.hello',
       version: PROTOCOL_VERSION,
       gateway: this.config.name || 'MEMS-CMS Multi UDP Gateway',
-      udp: { host: this.config.udp?.host || '0.0.0.0', port: portNumber(this.config.udp?.port, 4000) }
+      udp: {
+        host: this.config.udp?.host || '0.0.0.0',
+        port: this.socket?.address()?.port || portNumber(this.config.udp?.port, 4000)
+      }
     });
     this.send(ws, this.statusMessage());
     ws.on('message', (message, isBinary) => this.handleMessage(ws, message, isBinary));
@@ -406,7 +438,10 @@ class GatewaySession {
     if (String(this.config.aggregation?.mode || 'realtime') === 'frame') {
       let reassembler = this.reassemblers.get(device.sourceId);
       if (!reassembler) {
-        reassembler = new FrameReassembler(this.config.aggregation?.frame || {});
+        reassembler = new FrameReassembler(mergeFrameDefinition(
+          this.config.aggregation?.frame || {},
+          device.frame
+        ));
         this.reassemblers.set(device.sourceId, reassembler);
       }
       const result = reassembler.feed(payload, now);
@@ -559,9 +594,9 @@ class LegacyBridgeSession {
   }
 }
 
-function startIntegratedUdpGateway({ rootDir, host = '127.0.0.1', port = 8765 } = {}) {
+function startIntegratedUdpGateway({ rootDir, host = '127.0.0.1', port = 8765, udpPort, configPath } = {}) {
   const server = new WebSocketServer({ host, port });
-  const gateway = new GatewaySession(rootDir, server);
+  const gateway = new GatewaySession(rootDir, server, { udpPort, configPath });
   const legacySessions = new Set();
 
   server.on('connection', async (ws, request) => {
@@ -582,7 +617,7 @@ function startIntegratedUdpGateway({ rootDir, host = '127.0.0.1', port = 8765 } 
   });
 
   server.on('listening', () => {
-    console.log(`[udp-gateway] listening on ws://${host}:${port}`);
+    console.log(`[udp-gateway] listening on ws://${host}:${server.address()?.port || port}`);
   });
   server.on('error', (error) => {
     console.warn(`[udp-gateway] ${error.message}`);
@@ -598,4 +633,8 @@ function startIntegratedUdpGateway({ rootDir, host = '127.0.0.1', port = 8765 } 
   return server;
 }
 
-module.exports = { startIntegratedUdpGateway };
+module.exports = {
+  FrameReassembler,
+  mergeFrameDefinition,
+  startIntegratedUdpGateway
+};

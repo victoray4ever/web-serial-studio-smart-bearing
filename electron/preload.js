@@ -1,4 +1,5 @@
 const { contextBridge, ipcRenderer } = require('electron');
+const { productName, version } = require('../package.json');
 
 function subscribe(channel, callback) {
   const handler = (_event, payload) => callback(payload);
@@ -8,6 +9,10 @@ function subscribe(channel, callback) {
 
 contextBridge.exposeInMainWorld('memsCmsDesktop', {
   platform: process.platform,
+  app: {
+    name: productName,
+    version
+  },
   versions: {
     chrome: process.versions.chrome,
     electron: process.versions.electron,
@@ -16,6 +21,14 @@ contextBridge.exposeInMainWorld('memsCmsDesktop', {
   update: {
     check: () => ipcRenderer.invoke('app:update:check')
   },
+  historyStorage: {
+    getConfig: () => ipcRenderer.invoke('history-storage:get-config'),
+    chooseDirectory: () => ipcRenderer.invoke('history-storage:choose-directory'),
+    start: (metadata) => ipcRenderer.invoke('history-storage:start', metadata),
+    append: (record) => ipcRenderer.send('history-storage:append', record),
+    stop: (reason) => ipcRenderer.invoke('history-storage:stop', reason),
+    onStatus: (callback) => subscribe('history-storage:status', callback)
+  },
   mqtt: {
     connect: (options) => ipcRenderer.invoke('mqtt-tcp:connect', options),
     publish: (options) => ipcRenderer.invoke('mqtt-tcp:publish', options),
@@ -23,9 +36,5 @@ contextBridge.exposeInMainWorld('memsCmsDesktop', {
     onData: (callback) => subscribe('mqtt-tcp:data', callback),
     onError: (callback) => subscribe('mqtt-tcp:error', callback),
     onClose: (callback) => subscribe('mqtt-tcp:close', callback)
-  },
-  plc: {
-    send: (options) => ipcRenderer.invoke('plc:send', options),
-    test: (options) => ipcRenderer.invoke('plc:test', options)
   }
 });

@@ -1,0 +1,17 @@
+{
+  "generatedBy": "scripts/sync-vendor.js",
+  "versions": {
+    "chart.js": "4.4.3",
+    "hammerjs": "2.0.8",
+    "chartjs-plugin-zoom": "2.0.1",
+    "mqtt": "5.15.2",
+    "fft.js": "4.0.4"
+  },
+  "sha256": {
+    "chart.umd.js": "6e708cb2c2b41604db1f5dec01724856ec53ac867899a1e4e2cfb8f0ace6bed9",
+    "hammer.min.js": "7953631f0e54794d2352a3cfa591c0914d73e14f90141058e3cf16bee7939bcf",
+    "chartjs-plugin-zoom.min.js": "503c709802be285c676afe0369bf5f72066d0b0c23929188c3158f35c0327a9c",
+    "mqtt.min.js": "5d3ab711f330a8a436d6d9a6833d7d78831e40ce02db8186ac59852f52935312",
+    "fft.esm.js": "d25d35f068d31afd26ab7ca57b3638ac37c9fd8ea501ed91acbbadd56e732232"
+  }
+}

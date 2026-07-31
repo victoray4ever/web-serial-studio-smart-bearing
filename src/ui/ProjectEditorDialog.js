@@ -1,666 +1,33 @@
 import { eventBus } from '../core/EventBus.js';
 import { appState } from '../core/AppState.js';
 import { defaultProject } from '../core/ProjectModel.js';
-import { outputManager } from '../core/OutputManager.js';
 import { t } from '../core/i18n.js?v=csv-autosave-20260424-1';
-
-function cloneProject(project) {
-  if (typeof structuredClone === 'function') return structuredClone(project);
-  return JSON.parse(JSON.stringify(project));
-}
-
-function getLabels(locale) {
-  const fixedZhLabels = {
-    title: '项目编辑器',
-    addGroup: '添加分组',
-    addDataset: '添加数据集',
-    removeSelection: '删除当前项',
-    loadDefault: '载入默认项目',
-    apply: '应用到仪表盘',
-    projectNode: '项目',
-    groups: '分组',
-    projectSettings: '项目设置',
-    groupSettings: '分组设置',
-    datasetSettings: '数据集设置',
-    titleField: '标题',
-    protocol: '协议',
-    separator: '分隔符',
-    frameStart: '帧起始',
-    frameEnd: '帧结束',
-    frameDetection: '帧检测',
-    widget: '控件',
-    index: '索引',
-    units: '单位',
-    min: '最小值',
-    max: '最大值',
-    alarm: '报警值',
-    features: '启用功能',
-    plot: '曲线',
-    bar: '柱状图',
-    gauge: '仪表',
-    led: 'LED',
-    fft: 'FFT',
-    compass: '罗盘',
-    selectionHint: '左侧选择项目、分组或数据集后即可编辑属性。',
-    noGroupHint: '当前还没有分组，先添加一个分组。',
-    noDatasetHint: '当前分组还没有数据集，可以先添加一个。',
-    projectApplied: '项目编辑器内容已应用到仪表盘',
-    invalidProject: '项目结构无效，无法应用',
-    confirmDeleteGroup: '删除这个分组以及其下所有数据集？',
-    confirmDeleteDataset: '删除这个数据集？'
-  };
-
-  const zhLabels = {
-    title: '\u9879\u76ee\u7f16\u8f91\u5668',
-    addGroup: '\u6dfb\u52a0\u5206\u7ec4',
-    addDataset: '\u6dfb\u52a0\u6570\u636e\u96c6',
-    removeSelection: '\u5220\u9664\u5f53\u524d\u9879',
-    loadDefault: '\u8f7d\u5165\u9ed8\u8ba4\u9879\u76ee',
-    apply: '\u5e94\u7528\u5230\u4eea\u8868\u76d8',
-    projectNode: '\u9879\u76ee',
-    groups: '\u5206\u7ec4',
-    projectSettings: '\u9879\u76ee\u8bbe\u7f6e',
-    groupSettings: '\u5206\u7ec4\u8bbe\u7f6e',
-    datasetSettings: '\u6570\u636e\u96c6\u8bbe\u7f6e',
-    titleField: '\u6807\u9898',
-    protocol: '\u534f\u8bae',
-    separator: '\u5206\u9694\u7b26',
-    frameStart: '\u5e27\u8d77\u59cb',
-    frameEnd: '\u5e27\u7ed3\u675f',
-    frameDetection: '\u5e27\u68c0\u6d4b',
-    widget: '\u63a7\u4ef6',
-    index: '\u7d22\u5f15',
-    units: '\u5355\u4f4d',
-    min: '\u6700\u5c0f\u503c',
-    max: '\u6700\u5927\u503c',
-    alarm: '\u62a5\u8b66\u503c',
-    features: '\u542f\u7528\u529f\u80fd',
-    plot: '\u66f2\u7ebf',
-    bar: '\u67f1\u72b6\u56fe',
-    gauge: '\u4eea\u8868',
-    led: 'LED',
-    fft: 'FFT',
-    compass: '\u7f57\u76d8',
-    selectionHint: '\u5de6\u4fa7\u9009\u62e9\u9879\u76ee\u3001\u5206\u7ec4\u6216\u6570\u636e\u96c6\u540e\u5373\u53ef\u7f16\u8f91\u5c5e\u6027\u3002',
-    noGroupHint: '\u5f53\u524d\u8fd8\u6ca1\u6709\u5206\u7ec4\uff0c\u5148\u6dfb\u52a0\u4e00\u4e2a\u5206\u7ec4\u3002',
-    noDatasetHint: '\u5f53\u524d\u5206\u7ec4\u8fd8\u6ca1\u6709\u6570\u636e\u96c6\uff0c\u53ef\u4ee5\u5148\u6dfb\u52a0\u4e00\u4e2a\u3002',
-    projectApplied: '\u9879\u76ee\u7f16\u8f91\u5668\u5185\u5bb9\u5df2\u5e94\u7528\u5230\u4eea\u8868\u76d8',
-    invalidProject: '\u9879\u76ee\u7ed3\u6784\u65e0\u6548\uff0c\u65e0\u6cd5\u5e94\u7528',
-    confirmDeleteGroup: '\u5220\u9664\u8fd9\u4e2a\u5206\u7ec4\u4ee5\u53ca\u5176\u4e0b\u6240\u6709\u6570\u636e\u96c6\uff1f',
-    confirmDeleteDataset: '\u5220\u9664\u8fd9\u4e2a\u6570\u636e\u96c6\uff1f'
-  };
-
-  if (locale === 'zh-CN') return zhLabels;
-
-  if (locale === 'zh-CN') {
-    return {
-      title: '项目编辑器',
-      addGroup: '添加分组',
-      addDataset: '添加数据集',
-      removeSelection: '删除当前项',
-      loadDefault: '载入默认项目',
-      apply: '应用到仪表盘',
-      projectNode: '项目',
-      groups: '分组',
-      projectSettings: '项目设置',
-      groupSettings: '分组设置',
-      datasetSettings: '数据集设置',
-      titleField: '标题',
-      protocol: '协议',
-      separator: '分隔符',
-      frameStart: '帧起始',
-      frameEnd: '帧结束',
-      frameDetection: '帧检测',
-      widget: '控件',
-      index: '索引',
-      units: '单位',
-      min: '最小值',
-      max: '最大值',
-      alarm: '报警值',
-      features: '启用功能',
-      plot: '曲线',
-      bar: '柱状图',
-      gauge: '仪表',
-      led: 'LED',
-      fft: 'FFT',
-      compass: '罗盘',
-      selectionHint: '左侧选择项目、分组或数据集后即可编辑属性。',
-      noGroupHint: '当前还没有分组，先添加一个分组。',
-      noDatasetHint: '当前分组还没有数据集，可以先添加一个。',
-      projectApplied: '项目编辑器内容已应用到仪表盘',
-      invalidProject: '项目结构无效，无法应用',
-      confirmDeleteGroup: '删除这个分组以及其下所有数据集？',
-      confirmDeleteDataset: '删除这个数据集？'
-    };
-  }
-
-  if (locale === 'zh-CN') {
-    return {
-      title: '项目编辑器',
-      addGroup: '添加分组',
-      addDataset: '添加数据集',
-      removeSelection: '删除当前项',
-      loadDefault: '载入默认项目',
-      apply: '应用到仪表盘',
-      projectNode: '项目',
-      groups: '分组',
-      projectSettings: '项目设置',
-      groupSettings: '分组设置',
-      datasetSettings: '数据集设置',
-      titleField: '标题',
-      protocol: '协议',
-      separator: '分隔符',
-      frameStart: '帧起始',
-      frameEnd: '帧结束',
-      frameDetection: '帧检测',
-      widget: '控件',
-      index: '索引',
-      units: '单位',
-      min: '最小值',
-      max: '最大值',
-      alarm: '报警值',
-      features: '启用功能',
-      plot: '曲线',
-      bar: '柱状图',
-      gauge: '仪表',
-      led: 'LED',
-      fft: 'FFT',
-      compass: '罗盘',
-      selectionHint: '左侧选择项目、分组或数据集后即可编辑属性。',
-      noGroupHint: '当前还没有分组，先添加一个分组。',
-      noDatasetHint: '当前分组还没有数据集，可以先添加一个。',
-      projectApplied: '项目编辑器内容已应用到仪表盘',
-      invalidProject: '项目结构无效，无法应用',
-      confirmDeleteGroup: '删除这个分组以及其下所有数据集？',
-      confirmDeleteDataset: '删除这个数据集？'
-    };
-  }
-
-  return {
-    title: 'Project Editor',
-    addGroup: 'Add Group',
-    addDataset: 'Add Dataset',
-    removeSelection: 'Delete Selection',
-    loadDefault: 'Load Default',
-    apply: 'Apply to Dashboard',
-    projectNode: 'Project',
-    groups: 'Groups',
-    projectSettings: 'Project Settings',
-    groupSettings: 'Group Settings',
-    datasetSettings: 'Dataset Settings',
-    titleField: 'Title',
-    protocol: 'Protocol',
-    separator: 'Separator',
-    frameStart: 'Frame Start',
-    frameEnd: 'Frame End',
-    frameDetection: 'Frame Detection',
-    widget: 'Widget',
-    index: 'Index',
-    units: 'Units',
-    min: 'Min',
-    max: 'Max',
-    alarm: 'Alarm',
-    features: 'Features',
-    plot: 'Plot',
-    bar: 'Bar',
-    gauge: 'Gauge',
-    led: 'LED',
-    fft: 'FFT',
-    compass: 'Compass',
-    selectionHint: 'Select the project, a group, or a dataset on the left to edit its properties.',
-    noGroupHint: 'No groups yet. Add a group to start building the project.',
-    noDatasetHint: 'This group has no datasets yet. Add one to continue.',
-    projectApplied: 'Project editor changes applied to the dashboard',
-    invalidProject: 'The project structure is invalid and could not be applied',
-    confirmDeleteGroup: 'Delete this group and all of its datasets?',
-    confirmDeleteDataset: 'Delete this dataset?'
-  };
-}
-
-const GROUP_WIDGETS = ['DataGrid', 'MultiPlot', 'Plot', 'Bar', 'Gauge', 'Gauges', 'Compass', 'Accelerometer'];
-const DATASET_WIDGETS = ['Bar', 'Gauge', 'Plot', 'Compass', 'DataGrid'];
-const OPTION_LABELS_ZH = {
-  DataGrid: '数据表格',
-  MultiPlot: '多曲线图',
-  Plot: '折线图',
-  Bar: '柱状图',
-  Gauge: '仪表盘',
-  Gauges: '多仪表盘',
-  Compass: '罗盘',
-  Accelerometer: '加速度计',
-  EndDelimiterOnly: '仅帧尾',
-  StartAndEndDelimiter: '帧头 + 帧尾',
-  NoDelimiters: '无帧分隔',
-  Hann: 'Hann 窗',
-  None: '无',
-  linear: '线性幅值',
-  db: 'dB 幅值'
-};
-const FRAME_DETECTIONS = ['EndDelimiterOnly', 'StartAndEndDelimiter', 'NoDelimiters'];
-const PROTOCOL_FIELD_KINDS = ['byte', 'frameHeader', 'frameTail', 'frameSequence', 'frameId', 'frameLength', 'fixedArray', 'variableArray', 'checksum'];
-const FIELD_TYPES = ['uint8', 'int8', 'uint16', 'int16', 'uint24', 'int24', 'uint32', 'int32', 'float32', 'float64'];
-const COMMAND_FIELD_TYPES = [...FIELD_TYPES, 'hex', 'ascii'];
-const BYTE_ORDERS = ['LE', 'BE'];
-const ARRAY_ORDERS = ['channelFirst', 'interleaved'];
-const CHECKSUM_TYPES = ['none', 'sum8', 'sum16', 'xor8', 'crc8', 'crc16modbus', 'crc16ccitt'];
-const FRAME_LENGTH_SIZES = ['1', '2', '4'];
-const FFT_POINTS = ['128', '256', '512', '1024'];
-const FFT_WINDOWS = ['Hann', 'None'];
-const FFT_MAGNITUDE_MODES = ['linear', 'db'];
-const FORMULA_TEMPLATES = {
-  raw: 'raw',
-  linear: 'raw * (fields.scale ?? 1) + (fields.offset ?? 0)',
-  adc24Voltage: 'raw * 2.5 / 8388608',
-  adc24Bipolar: 'raw * 5 / 16777216',
-  milliVolt: 'raw / 1000',
-  pt100: '(() => {\n  const A = 3.9083e-3;\n  const B = -5.775e-7;\n  const r0 = 100;\n  const resistance = Math.abs(raw) * 0.0002980232;\n  const d = A * A - 4 * B * (1 - resistance / r0);\n  return d < 0 ? NaN : (-A + Math.sqrt(d)) / (2 * B);\n})()',
-  arrayOffset: 'raw - fields.zero_offset',
-  custom: ''
-};
-
-const CALIBRATION_PRESETS = [
-  { key: 'adc24_2v5', nameZh: '24bit ADC 2.5V', nameEn: '24-bit ADC 2.5V', formula: 'raw * 2.5 / 8388608.0', unit: 'V' },
-  { key: 'pt100_code', nameZh: 'PT100 Code 温度', nameEn: 'PT100 Code Temperature', formula: '(() => {\n  const A = 3.9083e-3;\n  const B = -5.775e-7;\n  const r0 = 100;\n  const resistance = Math.abs(raw) * 0.0002980232;\n  const d = A * A - 4 * B * (1 - resistance / r0);\n  return d < 0 ? NaN : (-A + Math.sqrt(d)) / (2 * B);\n})()', unit: '°C' },
-  { key: 'raw_offset_scale', nameZh: '零点与比例标定', nameEn: 'Offset / Scale Calibration', formula: '(raw - (params.zero ?? 0)) * (params.scale ?? 1)', unit: '' }
-];
-
-const PROJECT_TEMPLATES = [
-  {
-    id: 'binary-basic',
-    nameZh: '\u56fa\u5b9a\u4e8c\u8fdb\u5236\u5e27',
-    nameEn: 'Fixed Binary Frame',
-    descriptionZh: '\u9002\u5408\u5e27\u5934+\u5e27\u5c3e+\u56fa\u5b9a\u5b57\u6bb5\u7684\u4e8c\u8fdb\u5236\u534f\u8bae\u3002',
-    descriptionEn: 'For binary protocols with fixed fields, start delimiter and end delimiter.',
-    project: () => ({
-      title: '\u56fa\u5b9a\u4e8c\u8fdb\u5236\u5e27',
-      protocol: 'Delimited',
-      separator: ',',
-      frameStart: '5A A5',
-      frameEnd: 'DD EE',
-      frameDetection: 'StartAndEndDelimiter',
-      hexadecimalDelimiters: true,
-      protocolFields: [
-        { name: 'frameId', type: 'uint32', offset: 0, count: 1, endian: 'LE' },
-        { name: 'value1_raw', type: 'int24', offset: 4, count: 1, endian: 'BE' }
-      ],
-      groups: [
-        {
-          title: '\u6570\u636e',
-          widget: 'MultiPlot',
-          datasets: [
-            { title: 'Value 1', index: 0, sourceField: 'value1_raw', formula: 'raw', units: '', min: -100, max: 100, plot: true, graph: true }
-          ]
-        }
-      ],
-      sources: []
-    })
-  },
-  {
-    id: 'three-strain-no-vibration',
-    nameZh: '\u4e09\u5e94\u53d8\u65e0\u632f\u52a8',
-    nameEn: 'Three Strain, No Vibration',
-    descriptionZh: '3\u8def int24 \u5e94\u53d8\u6570\u7ec4 + PT100 + TMP117\uff0c\u9002\u5408\u8f74\u74e6\u8282\u70b9\u3002',
-    descriptionEn: 'Three int24 strain arrays with PT100 and TMP117 temperatures.',
-    project: () => ({
-      title: '\u8f74\u74e6\uff08\u4e09\u5e94\u53d8\u65e0\u632f\u52a8\uff09',
-      protocol: 'Delimited',
-      separator: ',',
-      frameStart: '5A A5 02 B5 0A 02 DD 80 02',
-      frameEnd: 'DD EE',
-      frameDetection: 'StartAndEndDelimiter',
-      hexadecimalDelimiters: true,
-      protocolFields: [
-        { name: 'frameId', type: 'uint32', offset: 0, count: 1, endian: 'LE' },
-        { name: 'strain1', type: 'int24', offset: 4, count: 160, endian: 'BE' },
-        { name: 'strain2', type: 'int24', offset: 484, count: 160, endian: 'BE' },
-        { name: 'strain3', type: 'int24', offset: 964, count: 160, endian: 'BE' },
-        { name: 'pt100Temperature', type: 'int24', offset: 1444, count: 1, endian: 'BE' },
-        { name: 'tmp117Temperature', type: 'int16', offset: 1447, count: 1, endian: 'BE' },
-        { name: 'reserved', type: 'uint8', offset: 1449, count: 8, endian: 'BE' },
-        { name: 'checksum', type: 'uint8', offset: 1457, count: 1, endian: 'BE' }
-      ],
-      groups: [
-        {
-          title: '\u4e09\u5e94\u53d8',
-          widget: 'MultiPlot',
-          datasets: [
-            { title: '\u5e94\u53d81', index: 0, sourceField: 'strain1', formula: 'raw * 2.5 / 8388608.0', units: '', min: -3, max: 3, plot: true, graph: true },
-            { title: '\u5e94\u53d82', index: 1, sourceField: 'strain2', formula: 'raw * 2.5 / 8388608.0', units: '', min: -3, max: 3, plot: true, graph: true },
-            { title: '\u5e94\u53d83', index: 2, sourceField: 'strain3', formula: 'raw * 2.5 / 8388608.0', units: '', min: -3, max: 3, plot: true, graph: true }
-          ]
-        },
-        {
-          title: '\u6e29\u5ea6',
-          widget: 'Gauges',
-          datasets: [
-            {
-              title: 'PT100\u6e29\u5ea6',
-              index: 3,
-              sourceField: 'pt100Temperature',
-              formula: '(() => { const A = 3.9083e-3; const B = -5.775e-7; const d = A * A - 4 * B * (1 - ((raw * 0.0002980232) / 100)); return d < 0 ? NaN : (-A + Math.sqrt(d)) / (2 * B); })()',
-              units: '\u00b0C',
-              min: -50,
-              max: 150,
-              gauge: true,
-              graph: false
-            },
-            { title: 'TMP117\u6e29\u5ea6', index: 4, sourceField: 'tmp117Temperature', formula: 'raw * 0.0078125', units: '\u00b0C', min: -50, max: 150, gauge: true, graph: false }
-          ]
-        }
-      ],
-      sources: []
-    })
-  },
-  {
-    id: 'csv-quick',
-    nameZh: 'CSV \u5feb\u901f\u7ed8\u56fe',
-    nameEn: 'CSV Quick Plot',
-    descriptionZh: '\u9002\u5408\u9017\u53f7\u5206\u9694\u7684\u6587\u672c\u6570\u636e\uff0c\u5982 1.2,3.4,5.6\\n\u3002',
-    descriptionEn: 'For comma-separated text frames, e.g. 1.2,3.4,5.6\\n.',
-    project: () => ({
-      title: 'CSV Quick Plot',
-      protocol: 'Delimited',
-      separator: ',',
-      frameStart: '',
-      frameEnd: '\\n',
-      frameDetection: 'EndDelimiterOnly',
-      hexadecimalDelimiters: false,
-      protocolFields: [],
-      groups: [
-        {
-          title: 'CSV Data',
-          widget: 'MultiPlot',
-          datasets: [
-            { title: 'Ch 1', index: 0, units: '', min: -100, max: 100, plot: true, graph: true },
-            { title: 'Ch 2', index: 1, units: '', min: -100, max: 100, plot: true, graph: true },
-            { title: 'Ch 3', index: 2, units: '', min: -100, max: 100, plot: true, graph: true }
-          ]
-        }
-      ],
-      sources: [],
-      frameParser: '',
-      frameParserCode: ''
-    })
-  },
-  {
-    id: 'multi-udp-nodes',
-    nameZh: '\u591a UDP \u8282\u70b9\u6a21\u677f',
-    nameEn: 'Multi UDP Nodes',
-    descriptionZh: '\u9884\u7f6e node-01/node-02/node-03 sourceId\uff0c\u4fbf\u4e8e\u7f51\u5173\u56fa\u5b9a\u6620\u5c04\u548c\u591a\u8282\u70b9\u7ed8\u56fe\u3002',
-    descriptionEn: 'Predefines node-01/node-02/node-03 sourceIds for gateway mapping and multi-node charts.',
-    project: () => ({
-      title: '\u591a UDP \u8282\u70b9\u76d1\u6d4b',
-      protocol: 'Delimited',
-      separator: ',',
-      frameStart: '5A A5',
-      frameEnd: 'DD EE',
-      frameDetection: 'StartAndEndDelimiter',
-      hexadecimalDelimiters: true,
-      protocolValidation: {
-        frameLength: { enabled: false, offset: 0, size: 2, endian: 'BE', adjustment: 0 },
-        checksum: { type: 'none', offset: -1, length: 1, endian: 'BE', rangeStart: 0, rangeLength: 0 }
-      },
-      sourceIdMap: [
-        { sourceId: 'node-01', title: '\u8282\u70b901', ip: '192.168.1.251', udpPort: 1030 },
-        { sourceId: 'node-02', title: '\u8282\u70b902', ip: '192.168.1.253', udpPort: 1030 },
-        { sourceId: 'node-03', title: '\u8282\u70b903', ip: '192.168.1.255', udpPort: 1030 }
-      ],
-      calibrationParameters: [
-        { name: 'scale', value: 1, unit: '' },
-        { name: 'zero', value: 0, unit: '' }
-      ],
-      protocolFields: [
-        { name: 'value_raw', type: 'int24', offset: 0, count: 1, endian: 'BE' }
-      ],
-      groups: [
-        {
-          title: '\u8282\u70b9\u6570\u636e',
-          widget: 'MultiPlot',
-          datasets: [
-            { title: '\u8282\u70b901', index: 0, sourceId: 'node-01', sourceField: 'value_raw', formula: 'raw', units: '', min: -100, max: 100, plot: true, graph: true },
-            { title: '\u8282\u70b902', index: 1, sourceId: 'node-02', sourceField: 'value_raw', formula: 'raw', units: '', min: -100, max: 100, plot: true, graph: true },
-            { title: '\u8282\u70b903', index: 2, sourceId: 'node-03', sourceField: 'value_raw', formula: 'raw', units: '', min: -100, max: 100, plot: true, graph: true }
-          ]
-        }
-      ],
-      sources: []
-    })
-  }
-];
-
-function byteLengthForType(type) {
-  const normalized = String(type || '').toLowerCase();
-  if (normalized.endsWith('8')) return 1;
-  if (normalized.endsWith('16')) return 2;
-  if (normalized.endsWith('24')) return 3;
-  if (normalized.endsWith('32')) return 4;
-  if (normalized.endsWith('64')) return 8;
-  return 1;
-}
-
-function hexByteLength(hexText) {
-  const clean = String(hexText || '').replace(/0x/gi, '').replace(/[^0-9a-f]/gi, '');
-  return clean.length >= 2 && clean.length % 2 === 0 ? clean.length / 2 : 0;
-}
-
-function fieldByteSize(field) {
-  const kind = String(field?.kind || 'byte');
-  if (kind === 'frameHeader' || kind === 'frameTail') {
-    const fixedLength = hexByteLength(field?.fixedValue || field?.value || '');
-    if (fixedLength > 0) return fixedLength;
-  }
-  if (kind === 'fixedArray' || kind === 'variableArray') {
-    const explicitLength = Math.max(0, Number(field?.byteLength) || 0);
-    if (explicitLength > 0) return explicitLength;
-  }
-  const samples = Math.max(1, Number(field?.count) || 1);
-  const channels = (kind === 'fixedArray' || kind === 'variableArray') ? Math.max(1, Number(field?.channels) || 1) : 1;
-  return byteLengthForType(field?.type) * samples * channels;
-}
-
-function fieldEndOffset(field) {
-  return Math.max(0, Number(field?.offset) || 0) + fieldByteSize(field);
-}
-
-function extendProtocolLabels(labels, locale) {
-  const zh = locale === 'zh-CN';
-  return {
-    ...labels,
-    fieldEditor: zh ? '\u5b57\u6bb5\u7f16\u8f91\u5668' : 'Field Editor',
-    formulaEditor: zh ? '\u516c\u5f0f\u7f16\u8f91\u5668' : 'Formula Editor',
-    displayEditor: zh ? '\u663e\u793a\u7f16\u8f91\u5668' : 'Display Editor',
-    sourceField: zh ? '\u6765\u6e90\u5b57\u6bb5' : 'Source Field',
-    formula: zh ? '\u6362\u7b97\u516c\u5f0f' : 'Formula',
-    formulaHelp: zh
-      ? '\u53ef\u4f7f\u7528 raw\u3001fields\u3001bytes\u3001Math\u3001index\u3001params\u3002\u793a\u4f8b\uff1araw * 2.5 / 8388608\u3002'
-      : 'Use raw, fields, bytes, Math, index and params. Example: raw * 2.5 / 8388608.',
-    fieldHelp: zh
-      ? '\u6309 JCom \u98ce\u683c\u5b9a\u4e49\u5e27\u5934\u3001\u5e27\u5c3e\u3001\u5e27\u5e8f\u53f7\u3001\u5e27ID\u3001\u5e27\u957f\u5ea6\u548c BYTE \u5b57\u6bb5\uff0c\u5e94\u7528\u65f6\u4f1a\u4fdd\u5b58\u4e3a\u7ed3\u6784\u5316 JSON \u5e76\u81ea\u52a8\u751f\u6210 parser\u3002'
-      : 'Define header, tail, sequence, frame ID, frame length and byte fields. The editor saves structured JSON and generates the parser automatically.',
-    addField: zh ? '\u6dfb\u52a0\u5b57\u6bb5' : 'Add Field',
-    autoOffset: zh ? '\u81ea\u52a8\u504f\u79fb' : 'Auto Offset',
-    sortByOffset: zh ? '\u6309\u504f\u79fb\u6392\u5e8f' : 'Sort by Offset',
-    generateParser: zh ? '\u751f\u6210\u89e3\u6790\u5668' : 'Generate Parser',
-    moveUp: zh ? '\u4e0a\u79fb' : 'Move Up',
-    moveDown: zh ? '\u4e0b\u79fb' : 'Move Down',
-    duplicate: zh ? '\u590d\u5236' : 'Duplicate',
-    openProject: zh ? '\u6253\u5f00\u9879\u76ee' : 'Open Project',
-    saveProject: zh ? '\u4fdd\u5b58\u9879\u76ee' : 'Save Project',
-    projectLoaded: zh ? '\u9879\u76ee\u5df2\u8f7d\u5165\u7f16\u8f91\u5668' : 'Project loaded into editor',
-    projectSaved: zh ? '\u9879\u76ee\u5df2\u4fdd\u5b58' : 'Project saved',
-    hexDelimiters: zh ? '\u5341\u516d\u8fdb\u5236\u5e27\u5934/\u5e27\u5c3e' : 'Hex Delimiters',
-    fieldName: zh ? '\u540d\u79f0' : 'Name',
-    fieldKind: zh ? '\u5b57\u6bb5\u7c7b\u578b' : 'Field Kind',
-    fieldType: zh ? '\u7c7b\u578b' : 'Type',
-    fieldOffset: zh ? '\u504f\u79fb' : 'Offset',
-    fieldCount: zh ? '\u6570\u91cf' : 'Count',
-    fieldEndian: zh ? '\u5b57\u8282\u5e8f' : 'Endian',
-    fieldFixedValue: zh ? '\u56fa\u5b9a\u503c/HEX' : 'Fixed Value / HEX',
-    fieldFormula: zh ? '\u5b57\u6bb5\u516c\u5f0f' : 'Field Formula',
-    arrayChannels: zh ? '\u901a\u9053' : 'Channels',
-    arrayOrder: zh ? '\u6570\u7ec4\u6392\u5217' : 'Array Order',
-    arrayLengthField: zh ? '\u957f\u5ea6\u5b57\u6bb5' : 'Length Field',
-    fieldBytes: zh ? '\u5b57\u8282' : 'Bytes',
-    fieldRange: zh ? '\u8303\u56f4' : 'Range',
-    noFields: zh ? '\u5c1a\u672a\u5b9a\u4e49\u5b57\u6bb5' : 'No fields defined yet.',
-    none: zh ? '\u65e0' : 'None',
-    sourceId: zh ? '\u6570\u636e\u6e90 sourceId' : 'Source ID',
-    formulaTemplate: zh ? '\u516c\u5f0f\u6a21\u677f' : 'Formula Template',
-    applyTemplate: zh ? '\u5957\u7528\u6a21\u677f' : 'Apply Template',
-    testFormula: zh ? '\u6d4b\u8bd5\u516c\u5f0f' : 'Test Formula',
-    testRaw: zh ? '\u6d4b\u8bd5 raw' : 'Test raw',
-    testIndex: zh ? '\u6d4b\u8bd5 index' : 'Test index',
-    formulaResult: zh ? '\u8ba1\u7b97\u7ed3\u679c' : 'Formula result',
-    recognizedParser: zh ? '\u5df2\u4ece\u89e3\u6790\u5668\u8bc6\u522b\u5b57\u6bb5/\u6570\u636e\u96c6' : 'Recognized fields/datasets from parser',
-    parserGenerated: zh ? '\u89e3\u6790\u5668\u5df2\u6839\u636e\u5b57\u6bb5\u8868\u751f\u6210' : 'Parser generated from field table',
-    parserNeedsFields: zh ? '\u9700\u8981\u81f3\u5c11\u4e00\u4e2a\u5b57\u6bb5\u548c\u4e00\u4e2a\u5df2\u7ed1\u5b9a\u6765\u6e90\u5b57\u6bb5\u7684\u6570\u636e\u96c6' : 'At least one field and one dataset with source field are required',
-    projectWizard: zh ? '\u65b0\u5efa\u89e3\u6790\u6587\u4ef6\u5411\u5bfc' : 'New Parser Wizard',
-    templateLibrary: zh ? '\u6a21\u677f\u5e93' : 'Template Library',
-    templateHelp: zh ? '\u9009\u62e9\u6a21\u677f\u540e\u53ef\u5feb\u901f\u751f\u6210\u5b57\u6bb5\u3001\u6570\u636e\u96c6\u548c\u57fa\u7840\u5e27\u914d\u7f6e\u3002' : 'Select a template to quickly create fields, datasets and frame settings.',
-    createFromTemplate: zh ? '\u4ece\u6a21\u677f\u65b0\u5efa' : 'Create from Template',
-    batchGenerator: zh ? '\u6279\u91cf\u751f\u6210\u5b57\u6bb5\u548c\u6570\u636e\u96c6' : 'Batch Generate Fields & Datasets',
-    batchPrefix: zh ? '\u540d\u79f0\u524d\u7f00' : 'Name Prefix',
-    batchCount: zh ? '\u901a\u9053\u6570' : 'Channels',
-    batchStartOffset: zh ? '\u8d77\u59cb\u504f\u79fb' : 'Start Offset',
-    batchSamples: zh ? '\u6bcf\u901a\u9053\u91c7\u6837\u70b9' : 'Samples / Channel',
-    batchFormula: zh ? '\u6279\u91cf\u516c\u5f0f' : 'Batch Formula',
-    batchUnits: zh ? '\u6279\u91cf\u5355\u4f4d' : 'Batch Units',
-    batchWidget: zh ? '\u5206\u7ec4\u63a7\u4ef6' : 'Group Widget',
-    batchApply: zh ? '\u6279\u91cf\u751f\u6210' : 'Generate Batch',
-    sampleTester: zh ? '\u6837\u4f8b HEX \u89e3\u6790\u6d4b\u8bd5' : 'Sample HEX Parser Test',
-    sampleHex: zh ? '\u6837\u4f8b HEX \u6570\u636e' : 'Sample HEX',
-    runSampleTest: zh ? '\u89e3\u6790\u6d4b\u8bd5' : 'Run Test',
-    sampleResult: zh ? '\u89e3\u6790\u7ed3\u679c' : 'Parse Result',
-    layoutView: zh ? '\u5b57\u8282\u5e03\u5c40\u89c6\u56fe' : 'Byte Layout View',
-    layoutEmpty: zh ? '\u6682\u65e0\u5b57\u6bb5\uff0c\u6dfb\u52a0\u5b57\u6bb5\u540e\u663e\u793a\u5b57\u8282\u5e03\u5c40\u3002' : 'No fields yet. Add fields to show the byte layout.',
-    batchCreated: zh ? '\u6279\u91cf\u5b57\u6bb5\u548c\u6570\u636e\u96c6\u5df2\u751f\u6210' : 'Batch fields and datasets generated',
-    templateApplied: zh ? '\u6a21\u677f\u5df2\u5e94\u7528\u5230\u7f16\u8f91\u5668' : 'Template applied to editor',
-    parserTestPassed: zh ? '\u6837\u4f8b\u89e3\u6790\u6210\u529f' : 'Sample parsed successfully',
-    parserTestFailed: zh ? '\u6837\u4f8b\u89e3\u6790\u5931\u8d25' : 'Sample parse failed',
-    professionalSettings: zh ? '\u4e13\u4e1a\u534f\u8bae\u914d\u7f6e' : 'Professional Protocol Settings',
-    checksumConfig: zh ? '\u6821\u9a8c\u7801\u914d\u7f6e' : 'Checksum Configuration',
-    checksumType: zh ? '\u6821\u9a8c\u7c7b\u578b' : 'Checksum Type',
-    checksumOffset: zh ? '\u6821\u9a8c\u504f\u79fb' : 'Checksum Offset',
-    checksumLength: zh ? '\u6821\u9a8c\u5b57\u8282' : 'Checksum Bytes',
-    checksumRangeStart: zh ? '\u6821\u9a8c\u8d77\u59cb' : 'Checksum Range Start',
-    checksumRangeLength: zh ? '\u6821\u9a8c\u957f\u5ea6' : 'Checksum Range Length',
-    frameLengthConfig: zh ? '\u5e27\u957f\u5ea6\u5b57\u6bb5\u914d\u7f6e' : 'Frame Length Field',
-    frameLengthEnabled: zh ? '\u542f\u7528\u5e27\u957f\u5ea6\u6821\u9a8c' : 'Enable frame length check',
-    frameLengthOffset: zh ? '\u957f\u5ea6\u5b57\u6bb5\u504f\u79fb' : 'Length Field Offset',
-    frameLengthSize: zh ? '\u957f\u5ea6\u5b57\u8282' : 'Length Bytes',
-    frameLengthEndian: zh ? '\u957f\u5ea6\u5b57\u8282\u5e8f' : 'Length Endian',
-    frameLengthAdjustment: zh ? '\u957f\u5ea6\u4fee\u6b63\u503c' : 'Length Adjustment',
-    sourceIdEditor: zh ? '\u591a sourceId \u7f16\u8f91' : 'Multi Source ID Editor',
-    sourceTitle: zh ? '\u663e\u793a\u540d\u79f0' : 'Display Name',
-    sourceIp: zh ? '\u8bbe\u5907 IP' : 'Device IP',
-    sourceUdpPort: zh ? 'UDP \u7aef\u53e3' : 'UDP Port',
-    addSource: zh ? '\u6dfb\u52a0 sourceId' : 'Add Source ID',
-    calibrationLibrary: zh ? '\u516c\u5f0f\u5e93\u548c\u6807\u5b9a\u53c2\u6570\u5e93' : 'Formula & Calibration Library',
-    calibrationPreset: zh ? '\u516c\u5f0f\u9884\u8bbe' : 'Formula Preset',
-    applyCalibrationPreset: zh ? '\u5957\u7528\u5230\u5f53\u524d\u6570\u636e\u96c6' : 'Apply to Current Dataset',
-    calibrationName: zh ? '\u53c2\u6570\u540d' : 'Parameter',
-    calibrationValue: zh ? '\u53c2\u6570\u503c' : 'Value',
-    calibrationUnit: zh ? '\u5355\u4f4d' : 'Unit',
-    addCalibration: zh ? '\u6dfb\u52a0\u6807\u5b9a\u53c2\u6570' : 'Add Calibration',
-    protocolImport: zh ? '\u5bfc\u5165\u534f\u8bae\u8868\u683c' : 'Import Protocol Table',
-    importHelp: zh ? '\u53ef\u7c98\u8d34 Excel/Word \u8868\u683c\uff0c\u6216\u5bfc\u5165 CSV/TSV/TXT\u3002\u8868\u5934\u5efa\u8bae\uff1aname,type,offset,count,endian,title,units,formula,widget\u3002' : 'Paste an Excel/Word table or import CSV/TSV/TXT. Suggested headers: name,type,offset,count,endian,title,units,formula,widget.',
-    importTable: zh ? '\u7c98\u8d34\u8868\u683c' : 'Paste Table',
-    importFile: zh ? '\u5bfc\u5165\u6587\u4ef6' : 'Import File',
-    importApply: zh ? '\u751f\u6210\u5b57\u6bb5/\u6570\u636e\u96c6' : 'Generate Fields/Datasets',
-    importUnsupported: zh ? '\u5f53\u524d\u6d4f\u89c8\u5668\u7aef\u6682\u4e0d\u76f4\u63a5\u89e3\u6790 xlsx/docx\uff0c\u8bf7\u4ece Excel/Word \u590d\u5236\u8868\u683c\u540e\u7c98\u8d34\u3002' : 'Direct xlsx/docx parsing is not enabled in this browser build. Copy the table from Excel/Word and paste it here.',
-    importCreated: zh ? '\u8868\u683c\u5b57\u6bb5\u548c\u6570\u636e\u96c6\u5df2\u751f\u6210' : 'Imported fields and datasets generated',
-    sendFrameEditor: zh ? '\u53d1\u9001\u5e27\u7f16\u8f91\u5668' : 'Send Frame Editor',
-    commandFrame: zh ? '\u547d\u4ee4\u5e27' : 'Command Frame',
-    addCommand: zh ? '\u6dfb\u52a0\u547d\u4ee4' : 'Add Command',
-    deleteCommand: zh ? '\u5220\u9664\u547d\u4ee4' : 'Delete Command',
-    commandName: zh ? '\u547d\u4ee4\u540d\u79f0' : 'Command Name',
-    autoLength: zh ? '\u81ea\u52a8\u957f\u5ea6' : 'Auto Length',
-    autoChecksum: zh ? '\u81ea\u52a8\u6821\u9a8c' : 'Auto Checksum',
-    checksumAppend: zh ? '\u504f\u79fb -1 \u8868\u793a\u81ea\u52a8\u8ffd\u52a0\u5230\u5e27\u5c3e\u524d' : 'Offset -1 appends before frame tail',
-    commandParameters: zh ? '\u547d\u4ee4\u53c2\u6570' : 'Command Parameters',
-    addParameter: zh ? '\u6dfb\u52a0\u53c2\u6570' : 'Add Parameter',
-    paramName: zh ? '\u53c2\u6570\u540d' : 'Param Name',
-    paramLabel: zh ? '\u63a7\u4ef6\u540d\u79f0' : 'Control Label',
-    paramType: zh ? '\u53c2\u6570\u7c7b\u578b' : 'Param Type',
-    paramValue: zh ? '\u9ed8\u8ba4\u503c' : 'Default Value',
-    commandPreview: zh ? '\u7ec4\u5305 HEX \u9884\u89c8' : 'Packet HEX Preview',
-    sendCommand: zh ? '\u4e00\u952e\u53d1\u9001\u547d\u4ee4' : 'Send Command',
-    commandSent: zh ? '\u547d\u4ee4\u5e27\u5df2\u53d1\u9001' : 'Command frame sent',
-    commandSendNeedsConnection: zh ? '\u8bf7\u5148\u8fde\u63a5\u8bbe\u5907\u6216\u7f51\u5173\u540e\u518d\u53d1\u9001' : 'Connect a device or gateway before sending',
-    commandFrameHelp: zh
-      ? '\u6309 JCom \u601d\u8def\u7ec4\u5305\uff1a\u5e27\u5934 + \u53c2\u6570\u63a7\u4ef6 + \u81ea\u52a8\u957f\u5ea6 + \u81ea\u52a8 CRC/SUM/XOR + \u5e27\u5c3e\u3002\u4fdd\u5b58\u540e\u5199\u5165 JSON \u7684 commandFrames\u3002'
-      : 'JCom-style packet builder: header + parameter controls + auto length + auto CRC/SUM/XOR + tail. Saved into commandFrames.',
-    receiveFormatEditor: zh ? '\u63a5\u6536\u89e3\u6790\u683c\u5f0f' : 'Receive Parser Format',
-    receiveFormatHelp: zh
-      ? '\u6309 JCom \u65b9\u5f0f\u6dfb\u52a0\u5b57\u6bb5\uff1a\u5de6\u4fa7\u662f\u5e27\u5b57\u6bb5\u987a\u5e8f\uff0c\u53f3\u4fa7\u7f16\u8f91\u5f53\u524d\u5b57\u6bb5\u7684\u5b57\u8282\u6570\u3001\u8f6c\u6362\u65b9\u5f0f\u3001\u540d\u79f0\u548c FIFO \u901a\u9053\u3002'
-      : 'JCom-style receive format editor: add fields on top, edit field order on the left and byte/count/FIFO channel settings on the right.',
-    byteCountSetting: zh ? '\u5b57\u8282\u6570\u8bbe\u7f6e' : 'Byte Count',
-    dataTransform: zh ? '\u6570\u636e\u8f6c\u6362' : 'Data Transform',
-    dataName: zh ? '\u6570\u636e\u540d\u79f0' : 'Data Name',
-    fifoChannels: zh ? 'FIFO\u901a\u9053\u5b9a\u4e49' : 'FIFO Channels',
-    channelName: zh ? '\u901a\u9053\u540d' : 'Channel',
-    highByteFirst: zh ? '\u9ad8\u5728\u524d' : 'High First',
-    calculateFormula: zh ? '\u8ba1\u7b97\u516c\u5f0f' : 'Formula',
-    panelDisplay: zh ? '\u9762\u677f\u663e\u793a' : 'Panel Display',
-    showPanel: zh ? '\u663e\u793a\u5230\u9762\u677f' : 'Show on Panel',
-    fixedValueHex: zh ? '\u56fa\u5b9a\u503c/HEX' : 'Fixed / HEX',
-    loadField: zh ? '\u52a0\u8f7d' : 'Load',
-    channelArrange: zh ? 'FIFO/\u901a\u9053\u6392\u5217\u65b9\u5f0f' : 'FIFO / Channel Order',
-    arrangeByChannel: zh ? '\u6309\u901a\u9053\u6392\u5217' : 'By Channel',
-    arrangeByIndex: zh ? '\u6309\u7d22\u5f15\u6392\u5217' : 'By Index',
-    arrangeHelp: zh ? '\u6392\u5217\u8bf4\u660e' : 'Order Help',
-    generateParserAndApply: zh ? '\u751f\u6210\u89e3\u6790\u5668' : 'Generate Parser',
-    addSendField: zh ? '\u6dfb\u52a0\u5b57\u6bb5' : 'Add Field',
-    controlArea: zh ? '\u63a7\u4ef6\u533a' : 'Control Area',
-    triggerSend: zh ? '\u63a7\u4ef6\u89e6\u53d1\u53d1\u9001' : 'Control Trigger Send',
-    packetFieldList: zh ? '\u7ec4\u5305\u5b57\u6bb5' : 'Packet Fields',
-    fieldValueHex: zh ? '\u5b57\u6bb5\u503c' : 'Field Value',
-    checksumNames: {
-      none: zh ? '\u65e0' : 'None',
-      sum8: 'SUM8',
-      sum16: 'SUM16',
-      xor8: 'XOR8',
-      crc8: 'CRC8',
-      crc16modbus: 'CRC16 Modbus',
-      crc16ccitt: 'CRC16 CCITT'
-    },
-    fieldKindNames: {
-      byte: zh ? '\u666e\u901a BYTE \u5b57\u6bb5' : 'Byte Field',
-      frameHeader: zh ? '\u5e27\u5934' : 'Frame Header',
-      frameTail: zh ? '\u5e27\u5c3e' : 'Frame Tail',
-      frameSequence: zh ? '\u5e27\u5e8f\u53f7' : 'Frame Sequence',
-      frameId: zh ? '\u5e27 ID' : 'Frame ID',
-      frameLength: zh ? '\u5e27\u957f\u5ea6' : 'Frame Length',
-      fixedArray: zh ? '\u5b9a\u957f\u6570\u7ec4' : 'Fixed Array',
-      variableArray: zh ? '\u53d8\u957f\u6570\u7ec4' : 'Variable Array',
-      checksum: zh ? '\u6821\u9a8c' : 'Checksum'
-    },
-    arrayOrderNames: {
-      channelFirst: zh ? '\u6309\u901a\u9053\u6392\u5217' : 'Channel First',
-      interleaved: zh ? '\u6309\u91c7\u6837\u70b9\u4ea4\u9519' : 'Interleaved'
-    },
-    formulaTemplateNames: {
-      raw: zh ? '\u539f\u59cb\u503c raw' : 'Raw value',
-      linear: zh ? '\u7ebf\u6027\u6362\u7b97 raw * scale + offset' : 'Linear scale',
-      adc24Voltage: zh ? '24bit ADC \u7535\u538b 2.5V' : '24-bit ADC voltage 2.5V',
-      adc24Bipolar: zh ? '24bit ADC \u53cc\u6781\u6027 5V' : '24-bit ADC bipolar 5V',
-      milliVolt: zh ? '\u6beb\u4f0f\u8f6c\u4f0f' : 'mV to V',
-      pt100: zh ? 'PT100 \u6e29\u5ea6' : 'PT100 temperature',
-      arrayOffset: zh ? '\u6570\u7ec4\u6263\u96f6\u70b9' : 'Array minus zero offset',
-      custom: zh ? '\u4e0d\u5957\u7528' : 'Do not apply'
-    },
-    fftSettings: zh ? 'FFT \u8bbe\u7f6e' : 'FFT Settings',
-    fftSampleRate: zh ? '\u56fa\u5b9a\u91c7\u6837\u7387 (Hz)' : 'Fixed Sample Rate (Hz)',
-    fftSampleRateField: zh ? '\u91c7\u6837\u7387\u5b57\u6bb5' : 'Sample Rate Field',
-    fftPoints: zh ? 'FFT \u70b9\u6570' : 'FFT Points',
-    fftWindow: zh ? '\u7a97\u51fd\u6570' : 'Window',
-    fftMagnitudeMode: zh ? '\u5e45\u503c\u663e\u793a' : 'Magnitude Display',
-    fftAmplitudeUnit: zh ? '\u5e45\u503c\u5355\u4f4d' : 'Amplitude Unit',
-    fftHelp: zh
-      ? '\u91c7\u6837\u7387\u5b57\u6bb5\u4f18\u5148\u4e8e\u56fa\u5b9a\u91c7\u6837\u7387\uff1b\u586b\u5199\u540e FFT \u6a2a\u8f74\u5c06\u4ee5 Hz \u663e\u793a\u3002dB \u4e3a\u76f8\u5bf9 1 \u5355\u4f4d\u7684\u5e45\u503c\u3002'
-      : 'Sample rate field overrides the fixed rate. With a rate, the FFT axis displays Hz. dB is relative to 1 amplitude unit.'
-  };
-}
+import {
+  cloneProject,
+  getLabels,
+  GROUP_WIDGETS,
+  DATASET_WIDGETS,
+  OPTION_LABELS_ZH,
+  FRAME_DETECTIONS,
+  PROTOCOL_FIELD_KINDS,
+  FIELD_TYPES,
+  COMMAND_FIELD_TYPES,
+  BYTE_ORDERS,
+  ARRAY_ORDERS,
+  CHECKSUM_TYPES,
+  FRAME_LENGTH_SIZES,
+  FFT_POINTS,
+  FFT_WINDOWS,
+  FFT_MAGNITUDE_MODES,
+  FORMULA_TEMPLATES,
+  CALIBRATION_PRESETS,
+  PROJECT_TEMPLATES,
+  byteLengthForType,
+  hexByteLength,
+  fieldByteSize,
+  fieldEndOffset,
+  extendProtocolLabels
+} from './project-editor/ProjectEditorSupport.js';
 
 export class ProjectEditorDialog {
   constructor(modalRoot, projectModel, options = {}) {
@@ -928,7 +295,9 @@ export class ProjectEditorDialog {
       sourceId: String(item?.sourceId ?? item?.id ?? `node-${String(index + 1).padStart(2, '0')}`),
       title: String(item?.title ?? item?.name ?? `Node ${index + 1}`),
       ip: String(item?.ip ?? item?.host ?? ''),
-      udpPort: Number(item?.udpPort ?? item?.port ?? 0) || 0
+      udpPort: Number(item?.udpPort ?? item?.port ?? 0) || 0,
+      parserId: String(item?.parserId ?? item?.parser ?? ''),
+      parserFileName: String(item?.parserFileName ?? '')
     }));
 
     if (!Array.isArray(project.calibrationParameters)) project.calibrationParameters = [];
@@ -938,55 +307,6 @@ export class ProjectEditorDialog {
       unit: String(item?.unit || item?.units || '')
     }));
 
-    this._ensureInterlockConfig(project);
-  }
-
-  _ensureInterlockConfig(project) {
-    if (!project.interlock || typeof project.interlock !== 'object') project.interlock = {};
-    const interlock = project.interlock;
-    interlock.enabled = !!interlock.enabled;
-    interlock.mode = interlock.mode === 'all' ? 'all' : 'any';
-    interlock.windowSize = Math.max(1, Number(interlock.windowSize) || 1024);
-    interlock.confirmWindows = Math.max(1, Number(interlock.confirmWindows) || 3);
-    interlock.resetMode = interlock.resetMode === 'auto' ? 'auto' : 'manual';
-    if (!interlock.onAlarm || typeof interlock.onAlarm !== 'object') interlock.onAlarm = {};
-    interlock.onAlarm.outputId = String(interlock.onAlarm.outputId || interlock.outputId || '');
-    if (!Array.isArray(interlock.rules)) interlock.rules = [];
-    interlock.rules = interlock.rules.map((rule, index) => ({
-      id: String(rule?.id || `rule_${index + 1}`),
-      name: String(rule?.name || rule?.title || `Rule ${index + 1}`),
-      sourceField: String(rule?.sourceField || ''),
-      sourceId: String(rule?.sourceId || ''),
-      index: Number.isInteger(Number(rule?.index)) ? Number(rule.index) : undefined,
-      method: ['rms', 'max', 'min', 'avg'].includes(rule?.method) ? rule.method : 'rms',
-      threshold: Number(rule?.threshold) || 0,
-      windowSize: Math.max(0, Number(rule?.windowSize) || 0),
-      confirmWindows: Math.max(0, Number(rule?.confirmWindows) || 0),
-      unit: String(rule?.unit || rule?.units || ''),
-      showOnDashboard: rule?.showOnDashboard !== false,
-      displayWidget: ['Plot', 'Gauge', 'Bar'].includes(rule?.displayWidget) ? rule.displayWidget : 'Plot',
-      displayMin: Number.isFinite(Number(rule?.displayMin)) ? Number(rule.displayMin) : 0,
-      displayMax: Number.isFinite(Number(rule?.displayMax)) ? Number(rule.displayMax) : Math.max(Number(rule?.threshold) * 1.5 || 1, 1)
-    }));
-
-    if (!Array.isArray(project.outputs)) project.outputs = [];
-    project.outputs = project.outputs.map((output, index) => ({
-      id: String(output?.id || `output_${index + 1}`),
-      name: String(output?.name || output?.title || `Output ${index + 1}`),
-      type: ['none', 'udp', 'tcp', 'serial', 'modbusTcp', 'modbusRtu'].includes(output?.type) ? output.type : 'none',
-      host: String(output?.host || ''),
-      port: Number(output?.port) || 0,
-      serialPort: String(output?.serialPort || output?.portName || ''),
-      baudRate: Number(output?.baudRate) || 9600,
-      commandHex: String(output?.commandHex || ''),
-      target: String(output?.target || ''),
-      address: Number(output?.address) || 0,
-      activeValue: output?.activeValue ?? true,
-      inactiveValue: output?.inactiveValue ?? false,
-      unitId: Math.max(0, Math.min(255, Number(output?.unitId) || 1)),
-      modbusOperation: output?.modbusOperation === 'writeRegister' ? 'writeRegister' : 'writeCoil',
-      timeout: Math.max(500, Number(output?.timeout) || 3000)
-    }));
   }
 
   _syncProtocolSchema(project) {
@@ -1313,7 +633,6 @@ export class ProjectEditorDialog {
     });
 
     this._bindProfessionalConfigEvents();
-    this._bindInterlockEvents();
     this._bindJcomFormatEvents();
 
     this._el?.querySelector('#protocol-field-add')?.addEventListener('click', () => {
@@ -1426,7 +745,9 @@ export class ProjectEditorDialog {
         sourceId: `node-${String(index).padStart(2, '0')}`,
         title: `Node ${index}`,
         ip: '',
-        udpPort: 0
+        udpPort: 0,
+        parserId: '',
+        parserFileName: ''
       });
       this._refreshBody();
     });
@@ -1447,6 +768,22 @@ export class ProjectEditorDialog {
         if (!Number.isInteger(index)) return;
         this._draft.sourceIdMap?.splice(index, 1);
         this._refreshBody();
+      });
+    });
+
+    this._el?.querySelectorAll('[data-source-parser-file]').forEach((node) => {
+      node.addEventListener('change', async (event) => {
+        const index = Number(node.dataset.sourceParserFile);
+        const file = event.target.files?.[0];
+        if (!Number.isInteger(index) || !file) return;
+        try {
+          await this._importSourceProject(index, file);
+        } catch (error) {
+          eventBus.emit('toast', {
+            type: 'error',
+            message: `${appState.locale === 'zh-CN' ? '解析文件导入失败' : 'Parser import failed'}: ${error.message || error}`
+          });
+        }
       });
     });
 
@@ -1504,130 +841,6 @@ export class ProjectEditorDialog {
         if (textarea) textarea.value = String(readerEvent.target?.result || '');
       };
       reader.readAsText(file);
-    });
-  }
-
-  _bindInterlockEvents() {
-    this._ensureInterlockConfig(this._draft);
-    const interlock = this._draft.interlock;
-
-    this._el?.querySelectorAll('[data-interlock-field]').forEach((node) => {
-      const field = node.dataset.interlockField;
-      node.addEventListener(node.type === 'checkbox' || node.tagName === 'SELECT' ? 'change' : 'input', () => {
-        if (!field) return;
-        if (field === 'enabled') interlock.enabled = !!node.checked;
-        else if (['windowSize', 'confirmWindows'].includes(field)) interlock[field] = Math.max(1, Number(node.value) || 1);
-        else interlock[field] = node.value;
-      });
-    });
-
-    this._el?.querySelector('[data-interlock-output-id]')?.addEventListener('change', (event) => {
-      interlock.onAlarm.outputId = event.target.value;
-    });
-
-    this._el?.querySelector('#interlock-rule-add')?.addEventListener('click', () => {
-      const index = interlock.rules.length + 1;
-      interlock.rules.push({
-        id: `rule_${index}`,
-        name: `RMS ${index}`,
-        sourceField: '',
-        sourceId: '',
-        method: 'rms',
-        threshold: 0,
-        windowSize: 0,
-        confirmWindows: 0,
-        unit: '',
-        showOnDashboard: true,
-        displayWidget: 'Plot',
-        displayMin: 0,
-        displayMax: 1
-      });
-      this._refreshBody();
-    });
-
-    this._el?.querySelectorAll('[data-interlock-rule-field]').forEach((node) => {
-      const index = Number(node.dataset.index);
-      const field = node.dataset.interlockRuleField;
-      node.addEventListener(node.tagName === 'SELECT' ? 'change' : 'input', () => {
-        const rule = interlock.rules?.[index];
-        if (!rule || !field) return;
-        if (field === 'showOnDashboard') rule[field] = !!node.checked;
-        else if (['threshold', 'windowSize', 'confirmWindows', 'displayMin', 'displayMax'].includes(field)) rule[field] = Number(node.value) || 0;
-        else rule[field] = node.value;
-      });
-    });
-
-    this._el?.querySelectorAll('[data-interlock-rule-remove]').forEach((node) => {
-      node.addEventListener('click', () => {
-        const index = Number(node.dataset.interlockRuleRemove);
-        if (!Number.isInteger(index)) return;
-        interlock.rules.splice(index, 1);
-        this._refreshBody();
-      });
-    });
-
-    this._el?.querySelector('#interlock-output-add')?.addEventListener('click', () => {
-      const index = this._draft.outputs.length + 1;
-      this._draft.outputs.push({
-        id: `plc_output_${index}`,
-        name: `PLC Output ${index}`,
-        type: 'udp',
-        host: '',
-        port: 0,
-        commandHex: '',
-        unitId: 1,
-        modbusOperation: 'writeCoil',
-        address: 0,
-        activeValue: true,
-        inactiveValue: false,
-        timeout: 3000
-      });
-      this._refreshBody();
-    });
-
-    this._el?.querySelectorAll('[data-output-field]').forEach((node) => {
-      const index = Number(node.dataset.index);
-      const field = node.dataset.outputField;
-      node.addEventListener(node.tagName === 'SELECT' ? 'change' : 'input', () => {
-        const output = this._draft.outputs?.[index];
-        if (!output || !field) return;
-        if (['port', 'baudRate', 'address', 'unitId', 'timeout'].includes(field)) output[field] = Number(node.value) || 0;
-        else output[field] = node.value;
-        if (field === 'type') {
-          if (output.type === 'modbusTcp' && !Number(output.port)) output.port = 502;
-          this._refreshBody();
-        }
-      });
-    });
-
-    this._el?.querySelectorAll('[data-output-remove]').forEach((node) => {
-      node.addEventListener('click', () => {
-        const index = Number(node.dataset.outputRemove);
-        if (!Number.isInteger(index)) return;
-        const removed = this._draft.outputs[index]?.id;
-        this._draft.outputs.splice(index, 1);
-        if (interlock.onAlarm.outputId === removed) interlock.onAlarm.outputId = '';
-        this._refreshBody();
-      });
-    });
-
-    this._el?.querySelectorAll('[data-output-test]').forEach((node) => {
-      node.addEventListener('click', async () => {
-        const index = Number(node.dataset.outputTest);
-        const output = this._draft.outputs?.[index];
-        const status = this._el?.querySelector(`[data-output-test-status="${index}"]`);
-        if (!output) return;
-        node.disabled = true;
-        if (status) status.textContent = '正在读取 PLC...';
-        try {
-          const result = await outputManager.test(output);
-          if (status) status.textContent = `连接正常，地址 ${result.address} 当前值：${String(result.value)}`;
-        } catch (error) {
-          if (status) status.textContent = `连接失败：${error.message || error}`;
-        } finally {
-          node.disabled = false;
-        }
-      });
     });
   }
 
@@ -1744,6 +957,84 @@ export class ProjectEditorDialog {
 
     this._el?.querySelector('#command-frame-send')?.addEventListener('click', () => {
       this._sendCommandFrame(this._selectedCommandFrame(), true);
+    });
+  }
+
+  async _importSourceProject(index, file) {
+    this._ensureProfessionalConfig(this._draft);
+    const sourceMap = this._draft.sourceIdMap?.[index];
+    if (!sourceMap) throw new Error('Data source not found.');
+
+    const imported = JSON.parse(await file.text());
+    if (!imported || typeof imported !== 'object') throw new Error('Invalid project JSON.');
+
+    const importedSources = Array.isArray(imported.sources) ? imported.sources : [];
+    const importedSource = importedSources[0] || {};
+    const importedParserKey = importedSource.parser || importedSource.parserId || importedSource.frameParserId;
+    const importedParser = importedParserKey && imported.parsers && typeof imported.parsers === 'object'
+      ? imported.parsers[importedParserKey]
+      : null;
+    const importedParserCode = String(
+      importedSource.frameParserCode ||
+      importedSource.frameParser ||
+      importedParser?.frameParserCode ||
+      importedParser?.frameParser ||
+      importedParser?.code ||
+      imported.frameParserCode ||
+      imported.frameParser ||
+      ''
+    ).trim();
+    const parserCode = importedParserCode || (this._canGenerateParser(imported) ? this._generateParserCode(imported) : '');
+    if (!parserCode) {
+      throw new Error(appState.locale === 'zh-CN'
+        ? '该项目没有可用的 frameParser 或结构化协议字段'
+        : 'The project has no frameParser or structured protocol fields.');
+    }
+
+    const sourceId = String(sourceMap.sourceId || `node-${String(index + 1).padStart(2, '0')}`);
+    const safeId = sourceId.replace(/[^A-Za-z0-9_-]+/g, '-') || `source-${index + 1}`;
+    const parserId = `parser-${safeId}`;
+    if (!this._draft.parsers || typeof this._draft.parsers !== 'object' || Array.isArray(this._draft.parsers)) {
+      this._draft.parsers = {};
+    }
+    this._draft.parsers[parserId] = {
+      title: imported.title || file.name,
+      protocol: importedSource.protocol || importedParser?.protocol || imported.protocol || 'Binary',
+      frameStart: importedSource.frameStart ?? importedParser?.frameStart ?? imported.frameStart ?? '',
+      frameEnd: importedSource.frameEnd ?? importedParser?.frameEnd ?? imported.frameEnd ?? '',
+      frameDetection: importedSource.frameDetection ?? importedParser?.frameDetection ?? imported.frameDetection ?? 'StartAndEndDelimiter',
+      hexadecimalDelimiters: importedSource.hexadecimalDelimiters ?? importedParser?.hexadecimalDelimiters ?? imported.hexadecimalDelimiters ?? true,
+      frameParserLanguage: importedSource.frameParserLanguage ?? importedParser?.frameParserLanguage ?? imported.frameParserLanguage ?? 0,
+      frameParserCode: parserCode
+    };
+    sourceMap.parserId = parserId;
+    sourceMap.parserFileName = file.name;
+
+    if (!Array.isArray(this._draft.groups)) this._draft.groups = [];
+    this._draft.groups = this._draft.groups.filter((group) => String(group.importedSourceId || '') !== sourceId);
+    const importedGroups = Array.isArray(imported.groups) ? imported.groups : [];
+    importedGroups.forEach((group, groupIndex) => {
+      this._draft.groups.push({
+        ...JSON.parse(JSON.stringify(group)),
+        title: `${sourceMap.title || sourceId} - ${group.title || `Group ${groupIndex + 1}`}`,
+        sourceId,
+        importedSourceId: sourceId,
+        datasets: (group.datasets || []).map((dataset, datasetIndex) => ({
+          ...JSON.parse(JSON.stringify(dataset)),
+          index: Number.isInteger(Number(dataset.index)) ? Number(dataset.index) : datasetIndex,
+          sourceId,
+          importedSourceId: sourceId,
+          protocolGenerated: false
+        }))
+      });
+    });
+
+    this._refreshBody();
+    eventBus.emit('toast', {
+      type: 'success',
+      message: appState.locale === 'zh-CN'
+        ? `${sourceMap.title || sourceId} 已绑定 ${file.name}`
+        : `${sourceMap.title || sourceId} is now bound to ${file.name}`
     });
   }
 
@@ -2809,19 +2100,40 @@ export class ProjectEditorDialog {
     project.frameParserCode = parserCode;
     project.frameParser = parserCode;
     project.frameParserLanguage = 0;
+    this._syncSourcesFromMap(project, parserCode);
+  }
+
+  _syncSourcesFromMap(project, generatedParserCode = '') {
     if (!Array.isArray(project.sources)) project.sources = [];
     if (Array.isArray(project.sourceIdMap) && project.sourceIdMap.length) {
-      project.sources = project.sourceIdMap.map((source, index) => ({
-        ...(project.sources[index] || {}),
-        title: source.title || source.sourceId || `Source ${index + 1}`,
-        sourceId: source.sourceId || index,
-        ip: source.ip || '',
-        udpPort: Number(source.udpPort) || 0,
-        frameParserLanguage: 0,
-        frameParserCode: parserCode
-      }));
+      const existingById = new Map(project.sources.map((source) => [String(source.sourceId ?? ''), source]));
+      project.sources = project.sourceIdMap.map((source, index) => {
+        const sourceId = source.sourceId || index;
+        const next = {
+          ...(existingById.get(String(sourceId)) || {}),
+          title: source.title || source.sourceId || `Source ${index + 1}`,
+          sourceId,
+          ip: source.ip || '',
+          udpPort: Number(source.udpPort) || 0,
+          parserFileName: source.parserFileName || ''
+        };
+        if (source.parserId) {
+          next.parser = source.parserId;
+          next.frameParserLanguage = project.parsers?.[source.parserId]?.frameParserLanguage ?? 0;
+          delete next.frameParserCode;
+          delete next.frameParser;
+        } else {
+          delete next.parser;
+          if (generatedParserCode) {
+            next.frameParserLanguage = 0;
+            next.frameParserCode = generatedParserCode;
+          }
+        }
+        return next;
+      });
       return;
     }
+    if (!generatedParserCode) return;
     if (!project.sources.length) {
       project.sources.push({ title: project.title || 'Source 1', sourceId: 0, frameParserLanguage: 0 });
     }
@@ -2830,7 +2142,7 @@ export class ProjectEditorDialog {
       title: project.sources[0].title || project.title || 'Source 1',
       sourceId: project.sources[0].sourceId ?? 0,
       frameParserLanguage: 0,
-      frameParserCode: parserCode
+      frameParserCode: generatedParserCode
     };
   }
 
@@ -2868,8 +2180,11 @@ export class ProjectEditorDialog {
     this._syncProtocolSchema(project);
     this._syncProtocolPanelDatasets(project);
     this._reindexProjectDatasets(project);
-    if (!this._canGenerateParser(project)) return;
-    this._syncGeneratedParser(project);
+    if (this._canGenerateParser(project)) {
+      this._syncGeneratedParser(project);
+      return;
+    }
+    this._syncSourcesFromMap(project);
   }
 
   _datasetSyncKey(dataset) {
@@ -2878,12 +2193,18 @@ export class ProjectEditorDialog {
   }
 
   _reindexProjectDatasets(project) {
-    let nextIndex = 0;
+    const nextIndexBySource = new Map();
     (project.groups || []).forEach((group) => {
       if (!Array.isArray(group.datasets)) group.datasets = [];
       group.datasets.forEach((dataset) => {
-        dataset.index = nextIndex;
-        nextIndex += 1;
+        const sourceId = String(dataset.sourceId ?? group.sourceId ?? '');
+        const nextIndex = nextIndexBySource.get(sourceId) || 0;
+        if (!Number.isInteger(Number(dataset.index)) || Number(dataset.index) < 0) {
+          dataset.index = nextIndex;
+        } else {
+          dataset.index = Number(dataset.index);
+        }
+        nextIndexBySource.set(sourceId, Math.max(nextIndex, dataset.index + 1));
       });
     });
   }
@@ -3364,7 +2685,6 @@ export class ProjectEditorDialog {
           </div>
         </div>
         ${this._renderJcomFormatEditor()}
-        ${this._renderInterlockEditor()}
         ${this._renderByteLayoutView()}
         ${this._renderSampleTester()}`;
     }
@@ -3463,158 +2783,6 @@ export class ProjectEditorDialog {
         <div class="form-label">${label}</div>
         <select class="form-select" data-field="${field}" data-kind="string">
           ${options.map((option) => `<option value="${this._escapeAttr(option)}" ${option === value ? 'selected' : ''}>${this._escape(this._optionLabel(option))}</option>`).join('')}
-        </select>
-      </div>`;
-  }
-
-  _renderInterlockEditor() {
-    this._ensureInterlockConfig(this._draft);
-    const zh = appState.locale === 'zh-CN';
-    const interlock = this._draft.interlock;
-    const outputs = this._draft.outputs || [];
-    const fieldOptions = this._interlockSourceFieldOptions();
-    const methodLabels = {
-      rms: zh ? 'RMS 有效值' : 'RMS',
-      max: zh ? '最大值' : 'Max',
-      min: zh ? '最小值' : 'Min',
-      avg: zh ? '平均值' : 'Average'
-    };
-    return `
-      <div class="editor-form-section">
-        <div class="editor-form-section-title">${zh ? '联锁设置' : 'Interlock Settings'}</div>
-        <div class="interlock-editor-card">
-          <div class="editor-form-grid">
-            <label class="checkbox-wrap" style="margin:0">
-              <input type="checkbox" data-interlock-field="enabled" ${interlock.enabled ? 'checked' : ''}>
-              <span>${zh ? '启用联锁' : 'Enable Interlock'}</span>
-            </label>
-            ${this._renderInlineSelect(zh ? '触发模式' : 'Trigger Mode', 'mode', interlock.mode, [['any', zh ? '任一路超限' : 'Any Rule'], ['all', zh ? '全部超限' : 'All Rules']], 'data-interlock-field')}
-            ${this._renderInlineNumber(zh ? '默认窗口点数' : 'Default Window Size', 'windowSize', interlock.windowSize, 'data-interlock-field')}
-            ${this._renderInlineNumber(zh ? '默认确认次数' : 'Default Confirm Windows', 'confirmWindows', interlock.confirmWindows, 'data-interlock-field')}
-            ${this._renderInlineSelect(zh ? '复位方式' : 'Reset Mode', 'resetMode', interlock.resetMode, [['manual', zh ? '手动复位' : 'Manual'], ['auto', zh ? '自动恢复' : 'Auto']], 'data-interlock-field')}
-            <div class="form-row">
-              <div class="form-label">${zh ? '报警输出' : 'Alarm Output'}</div>
-              <select class="form-select" data-interlock-output-id="true">
-                <option value="">${zh ? '不发送' : 'Do not send'}</option>
-                ${outputs.map((output) => `<option value="${this._escapeAttr(output.id)}" ${output.id === interlock.onAlarm.outputId ? 'selected' : ''}>${this._escape(output.name || output.id)}</option>`).join('')}
-              </select>
-            </div>
-          </div>
-          <div class="interlock-subhead">
-            <span>${zh ? '阈值规则' : 'Threshold Rules'}</span>
-            <button class="btn" type="button" id="interlock-rule-add">${zh ? '添加规则' : 'Add Rule'}</button>
-          </div>
-          <div class="interlock-rule-list">
-            ${interlock.rules.length ? interlock.rules.map((rule, index) => this._renderInterlockRule(rule, index, fieldOptions, methodLabels, zh)).join('') : `<div class="interlock-empty">${zh ? '尚未配置规则。添加 4 路振动 RMS 规则后即可报警判断。' : 'No rules configured.'}</div>`}
-          </div>
-        </div>
-      </div>
-      <div class="editor-form-section">
-        <div class="editor-form-section-title">${zh ? '输出设置' : 'Output Settings'}</div>
-        <div class="interlock-editor-card">
-          <div class="interlock-subhead">
-            <span>${zh ? 'PLC 输出通道' : 'PLC Outputs'}</span>
-            <button class="btn" type="button" id="interlock-output-add">${zh ? '添加输出' : 'Add Output'}</button>
-          </div>
-          <div class="interlock-output-list">
-            ${outputs.length ? outputs.map((output, index) => this._renderOutputRow(output, index, zh)).join('') : `<div class="interlock-empty">${zh ? '尚未配置输出。可以先只显示报警，后续再添加 UDP/TCP/Modbus。' : 'No outputs configured.'}</div>`}
-          </div>
-        </div>
-      </div>`;
-  }
-
-  _renderInterlockRule(rule, index, fieldOptions, methodLabels, zh) {
-    return `
-      <div class="interlock-rule-row">
-        <input class="form-input" data-interlock-rule-field="name" data-index="${index}" value="${this._escapeAttr(rule.name || '')}" placeholder="${zh ? '规则名称' : 'Rule name'}">
-        <select class="form-select" data-interlock-rule-field="sourceField" data-index="${index}">
-          <option value="">${zh ? '选择数据源字段' : 'Source field'}</option>
-          ${fieldOptions.map((field) => `<option value="${this._escapeAttr(field)}" ${field === rule.sourceField ? 'selected' : ''}>${this._escape(field)}</option>`).join('')}
-        </select>
-        <select class="form-select" data-interlock-rule-field="method" data-index="${index}">
-          ${Object.entries(methodLabels).map(([value, label]) => `<option value="${value}" ${value === rule.method ? 'selected' : ''}>${this._escape(label)}</option>`).join('')}
-        </select>
-        <input class="form-input" type="number" step="any" data-interlock-rule-field="threshold" data-index="${index}" value="${Number(rule.threshold) || 0}" placeholder="${zh ? '阈值' : 'Threshold'}">
-        <input class="form-input" type="number" data-interlock-rule-field="windowSize" data-index="${index}" value="${Number(rule.windowSize) || 0}" placeholder="${zh ? '窗口(0=默认)' : 'Window'}">
-        <input class="form-input" type="number" data-interlock-rule-field="confirmWindows" data-index="${index}" value="${Number(rule.confirmWindows) || 0}" placeholder="${zh ? '确认(0=默认)' : 'Confirm'}">
-        <input class="form-input" data-interlock-rule-field="unit" data-index="${index}" value="${this._escapeAttr(rule.unit || '')}" placeholder="${zh ? '单位' : 'Unit'}">
-        <select class="form-select" data-interlock-rule-field="displayWidget" data-index="${index}" title="${zh ? '仪表盘显示方式' : 'Dashboard widget'}">
-          ${[['Plot', zh ? '折线图' : 'Plot'], ['Gauge', zh ? '仪表' : 'Gauge'], ['Bar', zh ? '柱状条' : 'Bar']].map(([value, label]) => `<option value="${value}" ${rule.displayWidget === value ? 'selected' : ''}>${label}</option>`).join('')}
-        </select>
-        <label class="checkbox-wrap interlock-dashboard-check" title="${zh ? '在仪表盘显示实时计算值' : 'Show live metric on dashboard'}">
-          <input type="checkbox" data-interlock-rule-field="showOnDashboard" data-index="${index}" ${rule.showOnDashboard !== false ? 'checked' : ''}>
-          <span>${zh ? '显示' : 'Show'}</span>
-        </label>
-        <button class="btn" type="button" data-interlock-rule-remove="${index}">-</button>
-      </div>`;
-  }
-
-  _renderOutputRow(output, index, zh) {
-    const isModbusTcp = output.type === 'modbusTcp';
-    return `
-      <div class="interlock-output-card">
-        <div class="interlock-output-row">
-          <input class="form-input" data-output-field="id" data-index="${index}" value="${this._escapeAttr(output.id || '')}" placeholder="ID">
-          <input class="form-input" data-output-field="name" data-index="${index}" value="${this._escapeAttr(output.name || '')}" placeholder="${zh ? '输出名称' : 'Name'}">
-          <select class="form-select" data-output-field="type" data-index="${index}">
-            ${['none', 'udp', 'tcp', 'modbusTcp'].map((type) => `<option value="${type}" ${type === output.type ? 'selected' : ''}>${type === 'modbusTcp' ? 'Modbus TCP' : type}</option>`).join('')}
-          </select>
-          <input class="form-input" data-output-field="host" data-index="${index}" value="${this._escapeAttr(output.host || '')}" placeholder="${zh ? 'PLC IP / 主机' : 'PLC host'}">
-          <input class="form-input" type="number" data-output-field="port" data-index="${index}" value="${Number(output.port) || (isModbusTcp ? 502 : 0)}" placeholder="${zh ? '端口' : 'Port'}">
-          ${isModbusTcp
-            ? `<span class="interlock-output-summary">${zh ? '报警与复位值由 Modbus 参数发送' : 'Alarm/reset values use Modbus parameters'}</span>`
-            : `<input class="form-input" data-output-field="commandHex" data-index="${index}" value="${this._escapeAttr(output.commandHex || '')}" placeholder="${zh ? '命令 HEX，例如 AA 55 01 01' : 'Command HEX'}">`}
-          <button class="btn" type="button" data-output-remove="${index}">-</button>
-        </div>
-        ${isModbusTcp ? `
-          <div class="modbus-output-options">
-            <label><span>Unit ID</span><input class="form-input" type="number" min="0" max="255" data-output-field="unitId" data-index="${index}" value="${Number(output.unitId) || 1}"></label>
-            <label><span>${zh ? '写入类型' : 'Operation'}</span><select class="form-select" data-output-field="modbusOperation" data-index="${index}">
-              <option value="writeCoil" ${output.modbusOperation !== 'writeRegister' ? 'selected' : ''}>${zh ? '写单线圈 (FC05)' : 'Write Coil (FC05)'}</option>
-              <option value="writeRegister" ${output.modbusOperation === 'writeRegister' ? 'selected' : ''}>${zh ? '写保持寄存器 (FC06)' : 'Write Register (FC06)'}</option>
-            </select></label>
-            <label><span>${zh ? '地址（从0开始）' : 'Address (zero-based)'}</span><input class="form-input" type="number" min="0" data-output-field="address" data-index="${index}" value="${Number(output.address) || 0}"></label>
-            <label><span>${zh ? '报警写入值' : 'Alarm value'}</span><input class="form-input" data-output-field="activeValue" data-index="${index}" value="${this._escapeAttr(String(output.activeValue ?? true))}"></label>
-            <label><span>${zh ? '复位写入值' : 'Reset value'}</span><input class="form-input" data-output-field="inactiveValue" data-index="${index}" value="${this._escapeAttr(String(output.inactiveValue ?? false))}"></label>
-            <label><span>${zh ? '超时 (ms)' : 'Timeout (ms)'}</span><input class="form-input" type="number" min="500" data-output-field="timeout" data-index="${index}" value="${Math.max(500, Number(output.timeout) || 3000)}"></label>
-            <div class="modbus-test-control">
-              <button class="btn btn-primary" type="button" data-output-test="${index}">${zh ? '测试连接' : 'Test connection'}</button>
-              <span data-output-test-status="${index}">${zh ? '执行只读测试，不写入控制值' : 'Read-only test; no control value is written'}</span>
-            </div>
-          </div>` : ''}
-      </div>`;
-  }
-
-  _interlockSourceFieldOptions() {
-    const fields = new Set();
-    (this._draft.protocolFields || []).forEach((field) => {
-      if (field?.name && !['frameHeader', 'frameTail', 'checksum'].includes(field.kind)) fields.add(field.name);
-      if (field?.channels > 1) {
-        for (let i = 1; i <= Number(field.channels); i += 1) fields.add(`${field.name}_ch${i}`);
-      }
-    });
-    (this._draft.groups || []).forEach((group) => {
-      (group.datasets || []).forEach((dataset) => {
-        if (dataset.sourceField) fields.add(dataset.sourceField);
-      });
-    });
-    return Array.from(fields);
-  }
-
-  _renderInlineNumber(label, field, value, attrName) {
-    return `
-      <div class="form-row">
-        <div class="form-label">${label}</div>
-        <input class="form-input" type="number" ${attrName}="${field}" value="${Number(value) || 0}">
-      </div>`;
-  }
-
-  _renderInlineSelect(label, field, value, options, attrName) {
-    return `
-      <div class="form-row">
-        <div class="form-label">${label}</div>
-        <select class="form-select" ${attrName}="${field}">
-          ${options.map(([optionValue, optionLabel]) => `<option value="${this._escapeAttr(optionValue)}" ${optionValue === value ? 'selected' : ''}>${this._escape(optionLabel)}</option>`).join('')}
         </select>
       </div>`;
   }
@@ -4200,9 +3368,13 @@ export class ProjectEditorDialog {
   _renderSourceIdEditor() {
     this._ensureProfessionalConfig(this._draft);
     const rows = this._draft.sourceIdMap || [];
+    const zh = appState.locale === 'zh-CN';
     return `
       <div class="editor-form-section">
         <div class="editor-form-section-title">${this._labels.sourceIdEditor}</div>
+        <div class="template-help">${zh
+          ? '每个 sourceId 可导入一个独立项目 JSON。导入后会自动提取 parser 和显示数据集，并合并到当前联合仪表盘。'
+          : 'Each sourceId can import its own project JSON. Its parser and datasets are merged into this dashboard.'}</div>
         <div class="source-map-list">
           ${rows.map((item, index) => `
             <div class="source-map-row">
@@ -4210,6 +3382,14 @@ export class ProjectEditorDialog {
               ${this._renderSourceMapInput(this._labels.sourceTitle, 'title', item.title, index)}
               ${this._renderSourceMapInput(this._labels.sourceIp, 'ip', item.ip, index)}
               ${this._renderSourceMapInput(this._labels.sourceUdpPort, 'udpPort', item.udpPort, index, 'number')}
+              <div class="form-row source-parser-binding">
+                <div class="form-label">${zh ? '解析项目' : 'Parser Project'}</div>
+                <label class="btn source-parser-file-button" for="source-parser-file-${index}">
+                  ${item.parserFileName ? this._escape(item.parserFileName) : (zh ? '导入 JSON' : 'Import JSON')}
+                </label>
+                <input id="source-parser-file-${index}" data-source-parser-file="${index}" type="file" accept=".json,application/json" hidden>
+                ${item.parserId ? `<div class="source-parser-id mono">${this._escape(item.parserId)}</div>` : ''}
+              </div>
               <button class="btn" type="button" data-source-map-remove="${index}">-</button>
             </div>`).join('')}
         </div>

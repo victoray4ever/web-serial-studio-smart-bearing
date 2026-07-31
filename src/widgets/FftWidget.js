@@ -1,7 +1,7 @@
 /**
  * FftWidget - engineering-oriented frequency magnitude view for sampled data.
  */
-import FFT from 'https://cdn.jsdelivr.net/npm/fft.js@4.0.4/lib/fft.js/+esm';
+import FFT from '../vendor/fft.esm.js';
 import { WidgetBase } from './WidgetBase.js?v=widget-export-20260708-1';
 import { eventBus } from '../core/EventBus.js';
 import { getDatasetColor } from '../utils/helpers.js';

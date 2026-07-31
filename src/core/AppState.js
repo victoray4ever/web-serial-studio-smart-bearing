@@ -70,6 +70,7 @@ class AppState {
     this._projectFileName = '';
     this._csvExportEnabled = true;
     this._consoleExportEnabled = false;
+    this._historyStorageEnabled = false;
     this._sidebarVisible = true;
     this._currentWorkspace = 'dashboard';
     this._points = 5000;
@@ -121,6 +122,7 @@ class AppState {
   get projectFileName() { return this._projectFileName; }
   get csvExportEnabled() { return this._csvExportEnabled; }
   get consoleExportEnabled() { return this._consoleExportEnabled; }
+  get historyStorageEnabled() { return this._historyStorageEnabled; }
   get sidebarVisible() { return this._sidebarVisible; }
   get currentWorkspace() { return this._currentWorkspace; }
   get points() { return this._points; }
@@ -180,6 +182,13 @@ class AppState {
     this._consoleExportEnabled = v;
     this._saveSettings();
   }
+  set historyStorageEnabled(v) {
+    const enabled = !!v;
+    if (this._historyStorageEnabled === enabled) return;
+    this._historyStorageEnabled = enabled;
+    eventBus.emit('state:historyStorageChanged', enabled);
+    this._saveSettings();
+  }
   set sidebarVisible(v) {
     this._sidebarVisible = v;
     eventBus.emit('state:sidebarVisibleChanged', v);
@@ -234,6 +243,7 @@ class AppState {
         locale: this._locale,
         theme: this._theme,
         csvExportEnabled: this._csvExportEnabled,
+        historyStorageEnabled: this._historyStorageEnabled,
         serialConfig: this._serialConfig,
         wsConfig: this._wsConfig,
         mqttConfig: this._mqttConfig,
@@ -254,6 +264,7 @@ class AppState {
       if (s.locale) this._locale = s.locale;
       if (s.theme) this._theme = s.theme;
       if (s.csvExportEnabled !== undefined) this._csvExportEnabled = s.csvExportEnabled;
+      if (s.historyStorageEnabled !== undefined) this._historyStorageEnabled = !!s.historyStorageEnabled;
       if (s.serialConfig) Object.assign(this._serialConfig, s.serialConfig);
       if (s.wsConfig) Object.assign(this._wsConfig, s.wsConfig);
       if (s.mqttConfig) {

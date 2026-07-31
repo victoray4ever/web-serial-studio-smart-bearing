@@ -11,8 +11,7 @@ import { Sidebar } from './ui/Sidebar.js?v=interface-sync-20260709-1';
 import { Dashboard } from './ui/Dashboard.js?v=solid-mems-theme-20260708-1';
 import { Console } from './ui/Console.js?v=ui-fix-20260424-1';
 import { ProjectModel } from './core/ProjectModel.js?v=protocol-editor-v4-20260706-1';
-import { InterlockManager } from './core/InterlockManager.js?v=interlock-20260710-1';
-import { PreferencesDialog } from './ui/PreferencesDialog.js?v=auto-update-20260709-1';
+import { PreferencesDialog } from './ui/PreferencesDialog.js?v=history-storage-20260729-1';
 import { ProjectEditorDialog } from './ui/ProjectEditorDialog.js?v=chart-gauge-editor-i18n-20260709-1';
 import { GatewayConfigDialog } from './ui/GatewayConfigDialog.js?v=multi-udp-gateway-routing-20260619-2';
 import { runDocCaptureScenario } from './utils/docCapture.js?v=doc-capture-20260424-1';
@@ -22,7 +21,6 @@ class App {
     this._conn = new ConnectionManager();
     this._sim = new DataSimulator();
     this._project = new ProjectModel();
-    this._interlock = new InterlockManager();
     this._toolbar = null;
     this._sidebar = null;
     this._dashboard = null;
@@ -55,7 +53,14 @@ class App {
     this._dashboard = new Dashboard(document.getElementById('dashboard-area'));
     this._console = new Console(document.getElementById('console-area'), this._conn);
     this._prefs = new PreferencesDialog(document.getElementById('modal-root'));
-    this._gatewayConfig = new GatewayConfigDialog(document.getElementById('modal-root'));
+    this._gatewayConfig = new GatewayConfigDialog(document.getElementById('modal-root'), this._project, {
+      onApply: (project) => {
+        this._applyProject(project, {
+          mode: 'ProjectFile',
+          toastMessage: appState.locale === 'zh-CN' ? '联合仪表盘已更新' : 'Combined dashboard updated'
+        });
+      }
+    });
     this._projectEditor = new ProjectEditorDialog(document.getElementById('modal-root'), this._project, {
       onApply: (project) => {
         this._applyProject(project, { mode: 'ProjectFile' });
@@ -76,7 +81,6 @@ class App {
 
     const project = this._project.project;
     this._dashboard.buildFromProject(project);
-    this._interlock.configure(project);
 
     appState.project = project;
     appState.projectFileName = project.title || '';
@@ -162,7 +166,7 @@ class App {
       sidebar.classList.toggle('collapsed');
     });
 
-    eventBus.on('toast', ({ type, message }) => this._showToast(type, message));
+    eventBus.on('toast', ({ type, message, duration }) => this._showToast(type, message, duration));
 
     eventBus.on('ui:startSimulator', () => {
       this._sim?.toggle?.();
@@ -252,7 +256,7 @@ class App {
     });
   }
 
-  _showToast(type, message) {
+  _showToast(type, message, duration = 3500) {
     const container = document.getElementById('toast-container');
     if (!container) return;
 
@@ -293,7 +297,7 @@ class App {
       toast.style.opacity = '0';
       toast.style.transition = 'opacity 0.3s';
       setTimeout(() => toast.remove(), 300);
-    }, 3500);
+    }, Math.max(1500, Number(duration) || 3500));
   }
 }
 
